@@ -19,15 +19,23 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include "CommandInterpreter.h"
+#include "TcpClientRegistrar.h"
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 
-WiFiClient* clientMobile = NULL;
+//TCP connection pointers
+WiFiClient* clientMobile    = NULL;
+WiFiClient* clientDaylight  = NULL;
+WiFiClient* clientIoControl = NULL;
+
+//Interpreters for user connections (clones, w/ separate buffers)
 CommandInterpreter serialCmd;
 CommandInterpreter mobileCmd;
 
+//TCP server and the client id registrar: Handle reconnects seamlessly
 WiFiServer listenSocket(23);
+TcpClientRegistrar clients;
 
 void setup() {
   //Get wi-fi connected
@@ -46,42 +54,28 @@ void setup() {
   serialCmd.assign("diag", commandGetDiagnostics);
   serialCmd.assign("ip", commandGetIp);
   serialCmd.assign("scan", commandScanNetworks);
+  serialCmd.assign("identify", commandIdentify);
   
   //Allow mobile to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
+
+  //Register client IDs to respective pointers for auto connection handling
+  clients.assign("mobile", &clientMobile);
+  clients.assign("daylight", &clientDaylight);
+  clients.assign("iocontrol", &clientIoControl);
 }
 
 void loop() {
+  //Handle incoming TCP connections
+  clients.handle(listenSocket);
+  
+  //Handle dispatching commands from various sources if they are available
   serialCmd.handle(Serial);
   if (clientMobile)
     mobileCmd.handle(*clientMobile);
-  delay(50);
 
-  //Handle new wireless connections
-  WiFiClient newClient = listenSocket.available();
-  if (newClient) {
-    while (!newClient.connected())
-      delay(1);
-    newClient.setTimeout(5000);
-    newClient.println("identify");
-    String clientId = newClient.readStringUntil('\n');
-    clientId.replace("\r", "");
-    Serial.print("DEBUG: Client incoming with identity=\"");
-    Serial.print(clientId);
-    Serial.println("\"");
-
-    if (clientId.equals("mobile")) {
-      if (clientMobile) {
-        Serial.println("DEBUG: Connection already open, closing existing connection");
-        clientMobile->stop();
-        delete clientMobile;
-      }
-      clientMobile = new WiFiClient(newClient);
-    }
-    else {
-      newClient.stop();
-    }
-  }
+  //Slow things down a bit
+  delay(5);
 }
 
 void commandNotFound(Stream& port) {
@@ -106,6 +100,10 @@ void commandScanNetworks(Stream& port) {
     port.print(WiFi.channel(i));
     port.println(")");
   }
+}
+
+void commandIdentify(Stream& port) {
+  port.println("squirrel");
 }
 
 

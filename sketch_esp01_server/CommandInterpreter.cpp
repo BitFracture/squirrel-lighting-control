@@ -1,3 +1,9 @@
+/**
+ * The Flying Squirrels: Squirrel Lighting Controller
+ * Purpose: Simplify command handling logic across devices
+ * Author:  Erik W. Greif
+ * Date:    2017-10-13
+ */
 
 #include "CommandInterpreter.h"
 
