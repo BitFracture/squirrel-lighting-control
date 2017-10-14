@@ -23,6 +23,9 @@
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+IPAddress localIp(192,168,1,1);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
 
 //TCP connection pointers
 WiFiClient* clientMobile    = NULL;
@@ -40,6 +43,7 @@ TcpClientRegistrar clients;
 void setup() {
   //Get wi-fi connected
   WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(localIp, gateway, subnet);
   WiFi.softAP(WIFI_SSID, WIFI_PASS);
   
   delay(500);
