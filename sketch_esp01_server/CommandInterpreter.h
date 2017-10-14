@@ -35,6 +35,7 @@ private:
 	
 public:
 	CommandInterpreter();
+  CommandInterpreter(CommandInterpreter&);
 	void execute(Stream&, char*, char*);
 	int assign(char*, void (*)(Stream&));
 	int assignDefault(void (*)(Stream&));

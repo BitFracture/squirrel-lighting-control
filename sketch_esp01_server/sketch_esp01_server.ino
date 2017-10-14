@@ -24,7 +24,8 @@ const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 
 WiFiClient* clientMobile = NULL;
-CommandInterpreter userInput;
+CommandInterpreter serialCmd;
+CommandInterpreter mobileCmd;
 
 WiFiServer listenSocket(23);
 
@@ -41,17 +42,19 @@ void setup() {
   Serial.println("DEBUG: Server is ready");
 
   //Register user commands to handler functions
-  //userInput.setPrefix('/');
-  userInput.assignDefault(commandNotFound);
-  userInput.assign("diag", commandGetDiagnostics);
-  userInput.assign("ip", commandGetIp);
-  userInput.assign("scan", commandScanNetworks);
+  serialCmd.assignDefault(commandNotFound);
+  serialCmd.assign("diag", commandGetDiagnostics);
+  serialCmd.assign("ip", commandGetIp);
+  serialCmd.assign("scan", commandScanNetworks);
+  
+  //Allow mobile to do everything that the serial term can (copy)
+  mobileCmd = CommandInterpreter(serialCmd);
 }
 
 void loop() {
-  userInput.handle(Serial);
+  serialCmd.handle(Serial);
   if (clientMobile)
-    userInput.handle(*clientMobile);
+    mobileCmd.handle(*clientMobile);
   delay(50);
 
   //Handle new wireless connections

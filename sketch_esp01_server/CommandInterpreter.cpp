@@ -5,6 +5,20 @@ CommandInterpreter::CommandInterpreter() {
 }
 
 /**
+ * Clone registered command information, present a new buffer.
+ */
+CommandInterpreter::CommandInterpreter(CommandInterpreter& toCopy) {
+  for (int i = 0; i < CMD_MAX_COUNT * (CMD_LENGTH + 1); i++)
+    cmdNames[i] = toCopy.cmdNames[i];
+  for (int i = 0; i < CMD_MAX_COUNT; i++)
+    cmdFunctions[i] = toCopy.cmdFunctions[i];
+  cmdFunctionDefault = toCopy.cmdFunctionDefault;
+  cmdCount = toCopy.cmdCount;
+  cmdPointer = 0;
+  prefix = toCopy.prefix;
+}
+
+/**
  * Executes a registered function by its index in the cmdFunctions list.
  * 
  * @param index  The index of the registered command (returned from register).
