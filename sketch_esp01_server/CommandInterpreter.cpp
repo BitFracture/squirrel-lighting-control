@@ -30,8 +30,22 @@ CommandInterpreter::CommandInterpreter(CommandInterpreter& toCopy) {
  * @param index  The index of the registered command (returned from register).
  */
 void CommandInterpreter::execute(Stream& port, char* command, char* arguments) {
-  typedef void func(Stream&);
-  
+  typedef void func(Stream&, int, const char**);
+
+  //Divide up arguments by spaces
+  int argc = 0;
+  char last = ' ';
+  bool inQuotes = false;
+  for (int i = 0; arguments[i] != '\0' && argc < CMD_MAX_ARGS; i++) {
+    if (last == ' ' && arguments[i] != ' ') {
+      cmdArgPointers[argc++] = arguments + i;
+    }
+    last = arguments[i];
+    if (arguments[i] == ' ')
+      arguments[i] = '\0';
+  }
+
+  //Find the function and execute
   for (int i = 0; i < cmdCount; i++) {
 
     if (strcmp(command, &cmdNames[i * (CMD_LENGTH + 1)]) == 0) {
@@ -40,7 +54,7 @@ void CommandInterpreter::execute(Stream& port, char* command, char* arguments) {
         break;
       
       func* f = (func*)cmdFunctions[i];
-      f(port);
+      f(port, argc, (const char**)&cmdArgPointers[0]);
       return;
     }
   }
@@ -49,7 +63,7 @@ void CommandInterpreter::execute(Stream& port, char* command, char* arguments) {
     return;
 
   func* f = (func*)cmdFunctionDefault;
-  f(port);
+  f(port, argc, (const char**)&cmdArgPointers[0]);
 }
 
 /**
@@ -59,7 +73,8 @@ void CommandInterpreter::execute(Stream& port, char* command, char* arguments) {
  * @param commandToRegister  integer no-args function to call for this command.
  * @return  The command index for this command or -1 if failed.
  */
-int CommandInterpreter::assign(char* commandName, void (*commandToRegister)(Stream&)) {
+int CommandInterpreter::assign(char* commandName, 
+    void (*commandToRegister)(Stream&, int, const char**)) {
   if (cmdCount >= CMD_MAX_COUNT)
     return -1;
   
@@ -78,7 +93,8 @@ int CommandInterpreter::assign(char* commandName, void (*commandToRegister)(Stre
  * Assigns a default function to be called when a command is entered that
  * does not resolve to any registered command.
  */
-int CommandInterpreter::assignDefault(void (*commandToRegister)(Stream&)) {
+int CommandInterpreter::assignDefault(
+    void (*commandToRegister)(Stream&, int, const char**)) {
   
   cmdFunctionDefault = (unsigned)commandToRegister;
 }

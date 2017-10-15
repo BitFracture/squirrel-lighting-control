@@ -18,11 +18,13 @@ private:
 	const static int CMD_LENGTH = 16;
 	//Size of receive buffer (max total command size plus args and LF)
 	const static int CMD_BUFFER_SIZE = 255;
+  //Number of arguments possible
+  const static int CMD_MAX_ARGS = 16;
 
 	//Command receive buffer
 	char cmdBuffer[CMD_BUFFER_SIZE + 1];
-	//Store each command in one buffer, equally spaced
 	char cmdNames[CMD_MAX_COUNT * (CMD_LENGTH + 1)];
+  char* cmdArgPointers[CMD_MAX_ARGS];
 	//Store each command function (int, no-args!)
 	unsigned cmdFunctions[CMD_MAX_COUNT];
 	unsigned cmdFunctionDefault = 0;
@@ -37,8 +39,8 @@ public:
 	CommandInterpreter();
   CommandInterpreter(CommandInterpreter&);
 	void execute(Stream&, char*, char*);
-	int assign(char*, void (*)(Stream&));
-	int assignDefault(void (*)(Stream&));
+	int assign(char*, void (*)(Stream&, int, const char**));
+	int assignDefault(void (*)(Stream&, int, const char**));
   void setPrefix(char);
 	void handle(Stream&);
 };
