@@ -32,17 +32,36 @@ CommandInterpreter::CommandInterpreter(CommandInterpreter& toCopy) {
 void CommandInterpreter::execute(Stream& port, char* command, char* arguments) {
   typedef void func(Stream&, int, const char**);
 
-  //Divide up arguments by spaces
+  //Divide up arguments
   int argc = 0;
-  char last = ' ';
+  char last = '\0';
   bool inQuotes = false;
-  for (int i = 0; arguments[i] != '\0' && argc < CMD_MAX_ARGS; i++) {
-    if (last == ' ' && arguments[i] != ' ') {
+  int offset = 0;
+  bool escaped = false;
+  for (int i = 0; arguments[i + offset] != '\0' && argc < CMD_MAX_ARGS; i++) {
+
+    //Handle escaped characters
+    arguments[i] = arguments[i + offset];
+    if (!escaped && arguments[i] == '\\') {
+      offset++;
+      i--;
+      escaped = true;
+      continue;
+    }
+    
+    if (!inQuotes && arguments[i] == ' ')
+      arguments[i] = '\0';
+    
+    if (arguments[i] == '"' && !escaped) {
+      arguments[i] = '\0';
+      inQuotes = !inQuotes;
+    }
+    
+    if (last == '\0' && arguments[i] != '\0') {
       cmdArgPointers[argc++] = arguments + i;
     }
     last = arguments[i];
-    if (arguments[i] == ' ')
-      arguments[i] = '\0';
+    escaped = false;
   }
 
   //Find the function and execute

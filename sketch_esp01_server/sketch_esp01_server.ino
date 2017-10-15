@@ -117,21 +117,23 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.println("|       Squirrel Lighting Server       |");
   port.println("\\======================================/");
   port.println("");
-  port.println("== Command Reference ==");
-  port.println(" > diag .......... ESP diagnostic report");
-  port.println(" > ip ............ Get server IP");
-  port.println(" > scan .......... Scan available wifi");
-  port.println(" > identify ...... Get net identity");
-  port.println(" > help .......... Command syntax");
+  port.println("User Command Help");
+  port.println("");
+  port.println("> diag .......... ESP diagnostic report");
+  port.println("> ip ............ Get server IP");
+  port.println("> scan .......... Scan available wifi");
+  port.println("> identify ...... Get net identity");
+  port.println("> help .......... Command syntax");
+  port.println("> testargs ...... Test argument parser");
   port.println("");
 }
 
 void commandTestArgs(Stream& port, int argc, const char** argv) {
   for (int i = 0; i < argc; i++) {
-    Serial.print("Argument ");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.println(argv[i]);
+    port.print("Argument ");
+    port.print(i);
+    port.print(": ");
+    port.println(argv[i]);
   }
 }
 
