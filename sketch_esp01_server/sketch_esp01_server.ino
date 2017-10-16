@@ -23,6 +23,9 @@
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+IPAddress localIp(192,168,1,1);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
 
 //TCP connection pointers
 WiFiClient* clientMobile    = NULL;
@@ -40,6 +43,7 @@ TcpClientRegistrar clients;
 void setup() {
   //Get wi-fi connected
   WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(localIp, gateway, subnet);
   WiFi.softAP(WIFI_SSID, WIFI_PASS);
   
   delay(500);
@@ -55,6 +59,8 @@ void setup() {
   serialCmd.assign("ip", commandGetIp);
   serialCmd.assign("scan", commandScanNetworks);
   serialCmd.assign("identify", commandIdentify);
+  serialCmd.assign("help", commandHelp);
+  serialCmd.assign("testargs", commandTestArgs);
   
   //Allow mobile to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -66,7 +72,7 @@ void setup() {
 }
 
 void loop() {
-  //Handle incoming TCP connections
+  //Handle assignment of incoming TCP connections
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
@@ -78,19 +84,19 @@ void loop() {
   delay(5);
 }
 
-void commandNotFound(Stream& port) {
+void commandNotFound(Stream& port, int argc, const char** argv) {
   port.println("Unknown command");
 }
 
-void commandGetDiagnostics(Stream& port) {
+void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
   WiFi.printDiag(port);
 }
 
-void commandGetIp(Stream& port) {
+void commandGetIp(Stream& port, int argc, const char** argv) {
   port.println(WiFi.softAPIP());
 }
 
-void commandScanNetworks(Stream& port) {
+void commandScanNetworks(Stream& port, int argc, const char** argv) {
   int numNetworks = WiFi.scanNetworks();
   for (int i = 0; i < numNetworks; i++) {
     port.print(WiFi.SSID(i));
@@ -102,9 +108,32 @@ void commandScanNetworks(Stream& port) {
   }
 }
 
-void commandIdentify(Stream& port) {
+void commandIdentify(Stream& port, int argc, const char** argv) {
   port.println("squirrel");
 }
 
+void commandHelp(Stream& port, int argc, const char** argv) {
+  port.println("/======================================\\");
+  port.println("|       Squirrel Lighting Server       |");
+  port.println("\\======================================/");
+  port.println("");
+  port.println("User Command Help");
+  port.println("");
+  port.println("> diag .......... ESP diagnostic report");
+  port.println("> ip ............ Get server IP");
+  port.println("> scan .......... Scan available wifi");
+  port.println("> identify ...... Get net identity");
+  port.println("> help .......... Command syntax");
+  port.println("> testargs ...... Test argument parser");
+  port.println("");
+}
 
+void commandTestArgs(Stream& port, int argc, const char** argv) {
+  for (int i = 0; i < argc; i++) {
+    port.print("Argument ");
+    port.print(i);
+    port.print(": ");
+    port.println(argv[i]);
+  }
+}
 
