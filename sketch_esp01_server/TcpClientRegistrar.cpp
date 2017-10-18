@@ -31,11 +31,23 @@ int TcpClientRegistrar::assign(char* identity, WiFiClient** clientPointerAddress
  * An existing connection with the same identity will be closed. 
  */
 void TcpClientRegistrar::handle(WiFiServer& listenServer) {
-  
+
+  //Check old clients, clear up disconnects
+  for (int i = 0; i < idCount; i++) {
+    if ((*clients[i]) != NULL && !(*clients[i])->connected()) {
+      (*clients[i])->stop();
+      *clients[i] = NULL;
+      Serial.print("DEBUG: Cleaned up connection ");
+      Serial.println((const char*)&identities[i * (ID_LENGTH + 1)]);
+    }
+  }
+
+  //Find new clients
   WiFiClient newClient = listenServer.available();
   if (!newClient)
     return;
 
+  newClient.setNoDelay(true);
   //Delay for at most 250mS waiting for connection to open
   for (int i = 0; !newClient.connected() && i < 250; i++)
     delay(1);
