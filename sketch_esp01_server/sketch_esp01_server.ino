@@ -29,12 +29,14 @@ IPAddress subnet(255,255,255,0);
 
 //TCP connection pointers
 WiFiClient* clientMobile    = NULL;
+WiFiClient* clientLaptop    = NULL;
 WiFiClient* clientDaylight  = NULL;
 WiFiClient* clientIoControl = NULL;
 
 //Interpreters for user connections (clones, w/ separate buffers)
 CommandInterpreter serialCmd;
 CommandInterpreter mobileCmd;
+CommandInterpreter laptopCmd;
 
 //TCP server and the client id registrar: Handle reconnects seamlessly
 WiFiServer listenSocket(23);
@@ -62,10 +64,12 @@ void setup() {
   serialCmd.assign("help", commandHelp);
   serialCmd.assign("testargs", commandTestArgs);
   
-  //Allow mobile to do everything that the serial term can (copy)
+  //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
+  laptopCmd = CommandInterpreter(serialCmd);
 
   //Register client IDs to respective pointers for auto connection handling
+  clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
   clients.assign("daylight", &clientDaylight);
   clients.assign("iocontrol", &clientIoControl);
@@ -79,9 +83,8 @@ void loop() {
   serialCmd.handle(Serial);
   if (clientMobile)
     mobileCmd.handle(*clientMobile);
-
-  //Slow things down a bit
-  delay(5);
+  if (clientLaptop)
+    mobileCmd.handle(*clientLaptop);
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {

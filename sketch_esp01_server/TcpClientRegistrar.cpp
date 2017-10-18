@@ -35,17 +35,26 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   WiFiClient newClient = listenServer.available();
   if (!newClient)
     return;
-  
-  while (!newClient.connected())
+
+  //Delay for at most 250mS waiting for connection to open
+  for (int i = 0; !newClient.connected() && i < 250; i++)
     delay(1);
 
+  //Catch and discard any initial crap
+  delay(15);
+  while (newClient.available()) {
+    newClient.flush();
+    delay(15);
+  }
+
   //Wait for the new client to respond to identify command
+  Serial.println("DEBUG: Requesting identity from new client");
   newClient.setTimeout(ID_WAIT_TIMEOUT);
   newClient.println("identify");
   String clientId = newClient.readStringUntil('\n');
   clientId.replace("\r", "");
 
-  Serial.print("DEBUG: Client incoming with identity=\"");
+  Serial.print("DEBUG: New client has identity=\"");
   Serial.print(clientId);
   Serial.println("\"");
 
