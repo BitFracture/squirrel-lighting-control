@@ -52,19 +52,19 @@ Now, the common IP of *.1 can be used to fetch the IP of others by identity.
 4. squirrel requests "identify"
 5. lumen0 responds "lumen0"
 6. squirrel notes the identity and IP and terminates the connection
-
 7. iocontrol TCP connects to 192.168.1.1
 8. squirrel requests "auth"
 9. iocontrol responds "persist"
 10. squirrel requests "identify"
 11. iocontrol responds "iocontrol"
-
 12. iocontrol requests squirrel "ip lumen0"
 13. squirrel responds "192.168.1.12"
 14. iocontrol TCP connects to 192.168.1.12
 15. lumen0 responds "auth"
-16. (same as before...)
-17. iocontrol is now connected to lumen0
+16. iocontrol responds "register"
+17. lumen0 requests "identify"
+18. iocontrol responds "iocontrol"
+19. iocontrol is now connected to lumen0
 
 ## User Instructions
 
@@ -80,6 +80,7 @@ calibrate ...                TBD calibration processes
 ## Known Data Flows
 
 This list will translates commands through the network to the source of data.
+List is not complete. 
 
 ```
 SOURCE    DEST        COMMAND
@@ -91,7 +92,7 @@ iocontrol lumen0      power on
 user      squirrel    brightness auto
 squirrel  iocontrol   brightness auto
 [loop]
-iocontrol temperature get
+iocontrol daylight    get
 iocontrol lumen0      temperature [value]
 [endloop]
 ```
