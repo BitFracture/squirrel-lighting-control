@@ -23,12 +23,14 @@ AP = Analog input programming
 	01 = Three differential inputs, ref is 3
 	10 = Both
 	11 = Two independent diff inputs
+I  = Auto increment channel
+CN = A/D read channel number
 ```
 
 ### B. DAC Register
 
 If the output is enabled, this data byte 
-is the output step (0-255) * VDD.
+is the output step (0-255) * (VDD/255).
 
 ## 3. Input
 

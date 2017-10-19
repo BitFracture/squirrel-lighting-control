@@ -18,6 +18,9 @@
 #include <WiFiClientSecure.h>
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
+#include <Wire.h>
+
+const uint8_t PCF8591 = 0x90 >> 1;
 
 void setup() {
   Serial.begin(9600);
@@ -29,5 +32,16 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
+  Wire.beginTransmission(PCF8591); //Activate
+  Wire.write(0b00000001);          //Control: read starting at A0
+  Wire.endTransmission();
+  Wire.requestFrom(PCF8591, 1);
+  byte value0 = Wire.read();
 
+  Serial.print("ADC: ");
+  Serial.println(value0);
+
+  delay(1000);
 }
+
+
