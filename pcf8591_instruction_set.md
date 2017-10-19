@@ -14,9 +14,9 @@ is presented.
 
 ### A. Control Byte
 
-````0[O][AP]0[I][CN]````
+```0[O][AP]0[I][CN]```
 
-````
+```
 O  = Output enable
 AP = Analog input programming
 	00 = Four, single-ended inputs
