@@ -19,8 +19,9 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
+#include "Pcf8591.h"
 
-const uint8_t PCF8591 = 0x90 >> 1;
+Pcf8591 analogIO(&Wire);
 
 void setup() {
   Serial.begin(9600);
@@ -28,20 +29,34 @@ void setup() {
 
   //Initialize I2C connection 2=data 0=clk
   Wire.begin(2, 0);
+  analogIO.enableOutput(true);
 }
 
+uint8_t loopingLevel = 0;
+
 void loop() {
-  // put your main code here, to run repeatedly:
-  Wire.beginTransmission(PCF8591); //Activate
-  Wire.write(0b00000001);          //Control: read starting at A0
-  Wire.endTransmission();
-  Wire.requestFrom(PCF8591, 1);
-  byte value0 = Wire.read();
+  byte value0 = analogIO.read(0, 0);
+  byte value1 = analogIO.read(0, 1);
+  byte value2 = analogIO.read(0, 2);
+  byte value3 = analogIO.read(0, 3);
 
-  Serial.print("ADC: ");
-  Serial.println(value0);
+  Serial.print("ADC (");
+  Serial.print(value0);
+  delay(5);
+  Serial.print(", ");
+  Serial.print(value1);
+  delay(5);
+  Serial.print(", ");
+  Serial.print(value2);
+  delay(5);
+  Serial.print(", ");
+  Serial.print(value3);
+  delay(5);
+  Serial.println(")");
+  
+  analogIO.write(0, loopingLevel++);
 
-  delay(1000);
+  delay(50);
 }
 
 
