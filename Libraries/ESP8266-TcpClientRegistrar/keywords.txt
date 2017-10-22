@@ -1,0 +1,30 @@
+#######################################
+# Syntax Coloring Map
+#######################################
+
+#######################################
+# Library (KEYWORD3)
+#######################################
+
+TcpClientRegistrar	KEYWORD3
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+handle	KEYWORD2
+assign	KEYWORD2
+findIp	KEYWORD2
+enableInitialFlush	KEYWORD2
+disableInitialFlush	KEYWORD2
+setConnectionTimeout	KEYWORD2
+getConnectionTimeout	KEYWORD2
+softAPSetMaxConnections	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################

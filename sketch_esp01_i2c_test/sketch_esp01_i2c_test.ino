@@ -19,7 +19,7 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
-#include "Pcf8591.h"
+#include <Pcf8591.h>
 
 Pcf8591 analogIO(&Wire);
 
@@ -56,7 +56,7 @@ void loop() {
   
   analogIO.write(0, (1.0 + sin(loopingLevel += 0.1f)) * 127.0);
 
-  delay(50);
+  delay(500);
 }
 
 

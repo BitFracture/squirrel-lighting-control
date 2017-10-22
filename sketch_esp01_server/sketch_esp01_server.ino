@@ -7,6 +7,7 @@
  * Date:     2017-10-13
  */
 
+//ESP8266 libraries
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiAP.h>
 #include <ESP8266WiFiGeneric.h>
@@ -18,8 +19,10 @@
 #include <WiFiClientSecure.h>
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
-#include "CommandInterpreter.h"
-#include "TcpClientRegistrar.h"
+
+//Custom libraries
+#include <CommandInterpreter.h>
+#include <TcpClientRegistrar.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
