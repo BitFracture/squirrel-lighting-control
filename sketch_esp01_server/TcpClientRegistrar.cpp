@@ -45,24 +45,49 @@ void TcpClientRegistrar::disableInitialFlush() {
   flushDelay = 0;
 }
 
-IPAddress TcpClientRegistrar::findIp() {
-  //remoteIP();
-  return new IPAddress(0,0,0,0);
+void TcpClientRegistrar::setConnectionTimeout(int timeout) {
+  idWaitCount = timeout < 0 ? 0 : timeout;
 }
 
-IPAddress TcpClientRegistrar::setIp(const char* identity, IPAddress ip) {
+IPAddress TcpClientRegistrar::findIp(const char* identity) {
+
+  for (int index = 0; index < ID_MAX_REG_COUNT; index++) {
+    const char* viewing = (const char*)&registrar[index * (ID_LENGTH + 1)];
+    if (strcmp(viewing, identity) == 0) {
+      return IPAddress(registrarIps[index]);
+    }
+  }
+  
+  return IPAddress(0, 0, 0, 0);
+}
+
+/**
+ * Private
+ * Registers an identity with an IP address.
+ * 
+ * TO-DO: Set priority indexes based on past retrievals. 
+ *        Overwrite rather than filling up. Security flaw!
+ */
+void TcpClientRegistrar::setIp(const char* identity, IPAddress ip) {
 
   int index = 0;
   for (; index < ID_MAX_REG_COUNT; index++) {
     const char* viewing = (const char*)&registrar[index * (ID_LENGTH + 1)];
     if (viewing[0] == '\0' || strcmp(viewing, identity) == 0)
       break;
-    uint32_t registrarIps[ID_MAX_REG_COUNT];
   }
 
   //NO MORE ADDRESSES
   if (index >= ID_MAX_REG_COUNT)
     return;
+
+  //Copy identity (first chars)
+  for (int i = 0; i < ID_LENGTH; i++) {
+    registrar[(index * (ID_LENGTH + 1)) + i] = identity[i];
+    registrar[(index * (ID_LENGTH + 1)) + i + 1] = '\0';
+  }
+  
+  registrarIps[index] = uint32_t(ip);
 }
 
 /**
@@ -87,6 +112,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   if (!newClient)
     return;
 
+  //TO-DO Allow setting this timeout (default to 20mS)
   //Wait for the new connection to open, fail after timeout
   newClient.setNoDelay(true);
   for (int i = 0; !newClient.connected() && i < 250; i++)
@@ -105,17 +131,42 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
     }
   }
 
-  //Wait for the new client to respond to identify command
-  Serial.println("DEBUG: Requesting identity from new client");
-  newClient.setTimeout(ID_WAIT_TIMEOUT);
+  //Get the mode from the client
+  newClient.setTimeout(idWaitCount);
+  newClient.println("mode");
+  String clientMode = newClient.readStringUntil('\n');
+  clientMode.replace("\r", "");
+
+  int clientModeVal = 0;
+  if (clientMode.equals("persist"))
+    clientModeVal = 0;
+  else if (clientMode.equals("register"))
+    clientModeVal = 1;
+  else {
+    newClient.stop();
+    return;
+  }
+
+  //Get the identity from the client
   newClient.println("identify");
   String clientId = newClient.readStringUntil('\n');
   clientId.replace("\r", "");
 
-  Serial.print("DEBUG: New client has identity=\"");
+  if (clientModeVal == 0)
+    Serial.print("DEBUG: Persistent client has identity=\"");
+  else
+    Serial.print("DEBUG: Registering client has identity=\"");
   Serial.print(clientId);
   Serial.println("\"");
 
+  //Register this client in the lookup table
+  setIp(clientId.c_str(), newClient.remoteIP());
+
+  if (clientModeVal == 1) {
+    newClient.stop();
+    return;
+  }
+  
   //Find which identity was provided
   for (int i = 0; i < idCount; i++) {
     const char* name = (const char*)&identities[i * (ID_LENGTH + 1)];

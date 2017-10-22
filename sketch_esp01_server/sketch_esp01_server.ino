@@ -30,12 +30,6 @@ IPAddress subnet(255,255,255,0);
 const uint8_t MAX_AP_CLIENTS = 12;
 
 //TCP connection pointers
-WiFiClient* c1    = NULL;
-WiFiClient* c2    = NULL;
-WiFiClient* c3    = NULL;
-WiFiClient* c4    = NULL;
-WiFiClient* c5    = NULL;
-WiFiClient* c6    = NULL;
 WiFiClient* clientMobile    = NULL;
 WiFiClient* clientLaptop    = NULL;
 WiFiClient* clientIoControl = NULL;
@@ -51,9 +45,11 @@ TcpClientRegistrar clients;
 
 void setup() {
   //Get wi-fi connected
-  WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(localIp, gateway, subnet);
-  WiFi.softAP(WIFI_SSID, WIFI_PASS);
+  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
+    Serial.println("Critical failure!");
+  }
+  WiFi.mode(WIFI_AP);
   softAPSetMaxConnections(MAX_AP_CLIENTS);
   
   delay(500);
@@ -80,13 +76,6 @@ void setup() {
   clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
   clients.assign("iocontrol", &clientIoControl);
-  
-  clients.assign("1", &c1);
-  clients.assign("2", &c2);
-  clients.assign("3", &c3);
-  clients.assign("4", &c4);
-  clients.assign("5", &c5);
-  clients.assign("6", &c6);
 }
 
 void loop() {
@@ -99,13 +88,6 @@ void loop() {
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
     mobileCmd.handle(*clientLaptop);
-
-  if (c1) mobileCmd.handle(*c1);
-  if (c2) mobileCmd.handle(*c2);
-  if (c3) mobileCmd.handle(*c3);
-  if (c4) mobileCmd.handle(*c4);
-  if (c5) mobileCmd.handle(*c5);
-  if (c6) mobileCmd.handle(*c6);
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {
@@ -117,7 +99,11 @@ void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
 }
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
-  port.println(WiFi.softAPIP());
+  if (argc <= 0)
+    port.println(WiFi.softAPIP());
+  else {
+    port.println(clients.findIp(argv[0]));
+  }
 }
 
 void commandScanNetworks(Stream& port, int argc, const char** argv) {

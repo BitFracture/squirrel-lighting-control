@@ -1,7 +1,7 @@
 
 # TCP Client Registrar for Arduino/ESP8266
 
-This library is designed to simplify the process of networking TCP nodes in an ESP8266 network. Incoming clients must be able to respond to two simple commands, which allow this library to store its IP and Identity (virtual DNS). If a persistent connection is chosen by the connecting client, and the identity is in an approved list, a pointer is updated to point to the new client. This seamless replacement of pointers in the program space reduces all of the client connection processing to one handle() function. 
+This library is designed to simplify the process of networking TCP nodes in an ESP8266 network. Incoming clients must be able to respond to two simple commands, which enable this library to store its IP and Identity (virtual DNS). If a persistent connection is chosen by the connecting client, and the identity is in an approved list, a pointer is updated to point to the new client. This seamless replacement of pointers in the program space reduces all of the client connection processing to one handle() function. 
 
 
 ## Using Client Pointer Assignment
@@ -31,16 +31,16 @@ Lastly, you need to call the handle function in your loop. The performance of ha
 ```
 void loop() {
     clients.handle(listenSocket);
-	...
+    ...
 ```
 
 You can now use the pointer myClient in your loop or elsewhere. Simply make sure to verify it is valid before use. 
 
 ```
     ...
-	if (myClient && myClient.connected()) {
-	    //Logic for myClient interaction here
-	}
+    if (myClient && myClient.connected()) {
+        //Logic for myClient interaction here
+    }
 }
 ```
 
@@ -67,3 +67,24 @@ Secondly, the server will issue the command "identify", and the client must resp
 At this point, if you chose "register", your connection will be terminated. The server now keeps a record of your IP address. If you chose "persist" and you are a registered client (remember `assign(identifier, pointer)`) then your connection is ready for you to communicate normally. If your identity was never assigned with a pointer, you will be booted the same way you would if you had chosen "register". 
 
 All commands and responses must be terminated with a newline (LF, \n), and the server is tolerant of carriage returns (CRLF, \r\n). 
+
+## Other Useful Functions
+
+### Enabling Human Input
+
+Since registration handles in a blocking handle function, the time the library will wait for a client to identify is very low. If human input is necessary, you can raise this value.
+
+```setConnectionTimeout(5000); //Wait 5 seconds for input```
+
+### Flushing Initial Client Transmission
+
+This enables a wait period to capture and discard any initial incoming data when a TCP client connects. This is important when using keyboard input through a TelNet client, because some clients send identifying information when they connect. This information must not interfere with the 'identify' and 'mode' queries. 
+
+```enableInitialFlush(20); //Wait 20 mS for data to be present, and flush it```
+
+You can disable this also.
+
+```disableInitialFlush();```
+
+
+
