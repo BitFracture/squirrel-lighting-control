@@ -42,6 +42,7 @@ public:
   void enableInitialFlush(int = 20);
   void disableInitialFlush();
   void setConnectionTimeout(int);
+  int getConnectionTimeout();
 };
 
 /**

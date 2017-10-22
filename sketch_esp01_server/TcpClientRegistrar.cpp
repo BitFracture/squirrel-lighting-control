@@ -49,6 +49,10 @@ void TcpClientRegistrar::setConnectionTimeout(int timeout) {
   idWaitCount = timeout < 0 ? 0 : timeout;
 }
 
+int TcpClientRegistrar::getConnectionTimeout() {
+  return idWaitCount;
+}
+
 IPAddress TcpClientRegistrar::findIp(const char* identity) {
 
   for (int index = 0; index < ID_MAX_REG_COUNT; index++) {
@@ -136,6 +140,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   newClient.println("mode");
   String clientMode = newClient.readStringUntil('\n');
   clientMode.replace("\r", "");
+  newClient.setTimeout(0);
 
   int clientModeVal = 0;
   if (clientMode.equals("persist"))
@@ -148,9 +153,11 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   }
 
   //Get the identity from the client
+  newClient.setTimeout(idWaitCount);
   newClient.println("identify");
   String clientId = newClient.readStringUntil('\n');
   clientId.replace("\r", "");
+  newClient.setTimeout(0);
 
   if (clientModeVal == 0)
     Serial.print("DEBUG: Persistent client has identity=\"");

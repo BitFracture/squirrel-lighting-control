@@ -38,7 +38,7 @@ You can now use the pointer myClient in your loop or elsewhere. Simply make sure
 
 ```
     ...
-    if (myClient && myClient.connected()) {
+    if (myClient && myClient->connected()) {
         //Logic for myClient interaction here
     }
 }

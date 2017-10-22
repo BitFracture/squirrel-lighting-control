@@ -66,7 +66,8 @@ void setup() {
   serialCmd.assign("scan", commandScanNetworks);
   serialCmd.assign("identify", commandIdentify);
   serialCmd.assign("help", commandHelp);
-  serialCmd.assign("testargs", commandTestArgs);
+  serialCmd.assign("test-args", commandTestArgs);
+  serialCmd.assign("set-timeout", commandSetTimeout);
   
   //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -79,7 +80,6 @@ void setup() {
 }
 
 void loop() {
-  //Handle assignment of incoming TCP connections
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
@@ -134,7 +134,9 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.println("> scan .......... Scan available wifi");
   port.println("> identify ...... Get net identity");
   port.println("> help .......... Command syntax");
-  port.println("> testargs ...... Test argument parser");
+  port.println("> test-args ..... Test argument parser");
+  port.println("> set-timeout ... Millis to respond to");
+  port.println("                  connection commands");
   port.println("");
 }
 
@@ -145,5 +147,21 @@ void commandTestArgs(Stream& port, int argc, const char** argv) {
     port.print(": ");
     port.println(argv[i]);
   }
+}
+
+void commandSetTimeout(Stream& port, int argc, const char** argv) {
+  if (argc <= 0)
+    return;
+
+  int timeout = (String(argv[0])).toInt();
+  timeout = timeout < 0 ? 0 : timeout;
+  
+  Serial.print("DEBUG: Changed connection timeout from ");
+  Serial.print(clients.getConnectionTimeout());
+  Serial.print("mS to ");
+  Serial.print(timeout);
+  Serial.println("mS");
+  
+  clients.setConnectionTimeout(timeout);
 }
 
