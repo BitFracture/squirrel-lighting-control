@@ -19,13 +19,20 @@ extern "C" {
 class TcpClientRegistrar {
 private:
   static const int ID_LENGTH = 16;         //Identities < 16 chars
-  static const int ID_MAX_COUNT = 16;      //16 clients can map to pointers
+  static const int ID_MAX_COUNT = 8;       //8 clients can map to pointers (5 is max TCP on 8266)
   static const int ID_WAIT_TIMEOUT = 5000; //5 seconds for auth responses
+  
   static const int ID_MAX_REG_COUNT = 32;  //32 registered ip-name links
+  char registrar[ID_MAX_REG_COUNT * (ID_LENGTH + 1)];
+  uint32_t registrarIps[ID_MAX_REG_COUNT];
+
+  uint16_t flushDelay;
 
   char identities[ID_MAX_COUNT * (ID_LENGTH + 1)];
   WiFiClient** clients[ID_MAX_COUNT];
   int idCount = 0;
+
+  void setIp(const char*, IPAddress);
   
 public: 
   TcpClientRegistrar();
@@ -41,5 +48,7 @@ inline boolean softAPSetMaxConnections(int quantity) {
   wifi_softap_get_config(&config);
   config.max_connection = quantity;
   return wifi_softap_set_config(&config);
+  void enableInitialFlush(int = 20);
+  void disableInitialFlush();
 }
 

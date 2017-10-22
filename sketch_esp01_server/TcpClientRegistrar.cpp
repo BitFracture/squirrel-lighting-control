@@ -26,6 +26,46 @@ int TcpClientRegistrar::assign(char* identity, WiFiClient** clientPointerAddress
 }
 
 /**
+ * Enables a wait period to capture and discard any initial incoming data
+ * when a TCP client connects. This is important when using keyboard input
+ * through a TelNet client, because some clients send identifying 
+ * information when they connect. This information must not interfere
+ * with the 'identify' and 'mode' queries. 
+ * 
+ * @param timeout  The number of milliseconds to wait for data to be present. Default=20.
+ */
+void TcpClientRegistrar::enableInitialFlush(int timeout) {
+  flushDelay = timeout > 0 ? timeout : 0;
+}
+
+/**
+ * Disable flushing initial data from the connection. Default behavior. 
+ */
+void TcpClientRegistrar::disableInitialFlush() {
+  flushDelay = 0;
+}
+
+IPAddress TcpClientRegistrar::findIp() {
+  //remoteIP();
+  return new IPAddress(0,0,0,0);
+}
+
+IPAddress TcpClientRegistrar::setIp(const char* identity, IPAddress ip) {
+
+  int index = 0;
+  for (; index < ID_MAX_REG_COUNT; index++) {
+    const char* viewing = (const char*)&registrar[index * (ID_LENGTH + 1)];
+    if (viewing[0] == '\0' || strcmp(viewing, identity) == 0)
+      break;
+    uint32_t registrarIps[ID_MAX_REG_COUNT];
+  }
+
+  //NO MORE ADDRESSES
+  if (index >= ID_MAX_REG_COUNT)
+    return;
+}
+
+/**
  * Handle any incoming client connections on the given server, and automatically
  * determine the identity and address the client to the right pointer. 
  * An existing connection with the same identity will be closed. 
@@ -47,16 +87,22 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   if (!newClient)
     return;
 
+  //Wait for the new connection to open, fail after timeout
   newClient.setNoDelay(true);
-  //Delay for at most 250mS waiting for connection to open
   for (int i = 0; !newClient.connected() && i < 250; i++)
     delay(1);
+  if (!newClient.connected()) {
+    newClient.stop();
+    return;
+  }
 
   //Catch and discard any initial crap
-  delay(15);
-  while (newClient.available()) {
-    newClient.flush();
-    delay(15);
+  if (flushDelay > 0) {
+    delay(flushDelay);
+    while (newClient.available()) {
+      newClient.flush();
+      delay(flushDelay);
+    }
   }
 
   //Wait for the new client to respond to identify command

@@ -32,14 +32,14 @@ void setup() {
   analogIO.enableOutput(true);
 }
 
-uint8_t loopingLevel = 0;
+float loopingLevel = 0.0f;
 
 void loop() {
   byte value0 = analogIO.read(0, 0);
   byte value1 = analogIO.read(0, 1);
   byte value2 = analogIO.read(0, 2);
   byte value3 = analogIO.read(0, 3);
-
+  
   Serial.print("ADC (");
   Serial.print(value0);
   delay(5);
@@ -54,7 +54,7 @@ void loop() {
   delay(5);
   Serial.println(")");
   
-  analogIO.write(0, loopingLevel++);
+  analogIO.write(0, (1.0 + sin(loopingLevel += 0.1f)) * 127.0);
 
   delay(50);
 }
