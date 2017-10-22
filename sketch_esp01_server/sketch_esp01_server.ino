@@ -27,14 +27,17 @@ IPAddress localIp(192,168,1,1);
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
+const uint8_t MAX_AP_CLIENTS = 12;
+
 //TCP connection pointers
 WiFiClient* clientMobile    = NULL;
-WiFiClient* clientDaylight  = NULL;
+WiFiClient* clientLaptop    = NULL;
 WiFiClient* clientIoControl = NULL;
 
 //Interpreters for user connections (clones, w/ separate buffers)
 CommandInterpreter serialCmd;
 CommandInterpreter mobileCmd;
+CommandInterpreter laptopCmd;
 
 //TCP server and the client id registrar: Handle reconnects seamlessly
 WiFiServer listenSocket(23);
@@ -42,14 +45,17 @@ TcpClientRegistrar clients;
 
 void setup() {
   //Get wi-fi connected
-  WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(localIp, gateway, subnet);
-  WiFi.softAP(WIFI_SSID, WIFI_PASS);
+  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
+    Serial.println("Critical failure!");
+  }
+  WiFi.mode(WIFI_AP);
+  softAPSetMaxConnections(MAX_AP_CLIENTS);
   
   delay(500);
   Serial.begin(9600);
   Serial.println("DEBUG: WiFi AP is ready");
-  
+
   listenSocket.begin();
   Serial.println("DEBUG: Server is ready");
 
@@ -60,28 +66,28 @@ void setup() {
   serialCmd.assign("scan", commandScanNetworks);
   serialCmd.assign("identify", commandIdentify);
   serialCmd.assign("help", commandHelp);
-  serialCmd.assign("testargs", commandTestArgs);
+  serialCmd.assign("test-args", commandTestArgs);
+  serialCmd.assign("set-timeout", commandSetTimeout);
   
-  //Allow mobile to do everything that the serial term can (copy)
+  //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
+  laptopCmd = CommandInterpreter(serialCmd);
 
   //Register client IDs to respective pointers for auto connection handling
+  clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
-  clients.assign("daylight", &clientDaylight);
   clients.assign("iocontrol", &clientIoControl);
 }
 
 void loop() {
-  //Handle assignment of incoming TCP connections
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
   serialCmd.handle(Serial);
   if (clientMobile)
     mobileCmd.handle(*clientMobile);
-
-  //Slow things down a bit
-  delay(5);
+  if (clientLaptop)
+    mobileCmd.handle(*clientLaptop);
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {
@@ -93,7 +99,11 @@ void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
 }
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
-  port.println(WiFi.softAPIP());
+  if (argc <= 0)
+    port.println(WiFi.softAPIP());
+  else {
+    port.println(clients.findIp(argv[0]));
+  }
 }
 
 void commandScanNetworks(Stream& port, int argc, const char** argv) {
@@ -124,7 +134,9 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.println("> scan .......... Scan available wifi");
   port.println("> identify ...... Get net identity");
   port.println("> help .......... Command syntax");
-  port.println("> testargs ...... Test argument parser");
+  port.println("> test-args ..... Test argument parser");
+  port.println("> set-timeout ... Millis to respond to");
+  port.println("                  connection commands");
   port.println("");
 }
 
@@ -135,5 +147,21 @@ void commandTestArgs(Stream& port, int argc, const char** argv) {
     port.print(": ");
     port.println(argv[i]);
   }
+}
+
+void commandSetTimeout(Stream& port, int argc, const char** argv) {
+  if (argc <= 0)
+    return;
+
+  int timeout = (String(argv[0])).toInt();
+  timeout = timeout < 0 ? 0 : timeout;
+  
+  Serial.print("DEBUG: Changed connection timeout from ");
+  Serial.print(clients.getConnectionTimeout());
+  Serial.print("mS to ");
+  Serial.print(timeout);
+  Serial.println("mS");
+  
+  clients.setConnectionTimeout(timeout);
 }
 
