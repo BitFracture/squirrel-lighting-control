@@ -52,7 +52,7 @@ When clients do not request a persistent connection, they are still logged into 
 To retrieve the IP address of a registered client, call the registrar with the identifier you want the address for. 
 
 ```
-uint32_t myClientIp = clients.findIp("my_client_identifier");
+IPAddress myClientIp = clients.findIp("my_client_identifier");
 ```
 
 If you get back a non-0 value, the call was successful. 

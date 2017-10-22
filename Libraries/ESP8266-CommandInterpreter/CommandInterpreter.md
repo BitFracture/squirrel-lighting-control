@@ -8,6 +8,8 @@ This library interprets incoming commands in a stream, and can call associated f
 First, create a command interpreter instance. 
 
 ```
+#include <CommandInterpreter.h>
+
 CommandInterpreter cmdInterpreter;
 ```
 

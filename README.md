@@ -9,9 +9,9 @@ A network of ESP01 modules controls overhead lighting brightness and temperature
 1. To edit these sketches, you must first install Arduino IDE.
 2. Add the ESP8266 board option to your IDE (http://esp8266.github.io/Arduino/versions/2.2.0/doc/installing.html).
 3. Install the libraries for ESP8266 WiFi, in `External Libraries` folder.
-    - On Windows, copy to `\%USERPROFILE%\Documents\Arduino\libraries\`
-	- On MacOS, copy to `~/Documents/Arduino/libraries/`
 4. Install custom libraries, in `Libraries` folder. 
+    - On Windows, copy to `%USERPROFILE%\Documents\Arduino\libraries\`
+	- On MacOS, copy to `~/Documents/Arduino/libraries/`
 5. Choose the Generic ESP8266 for board type.
 6. Compile a blank sketch to see if it succeeds.
 
