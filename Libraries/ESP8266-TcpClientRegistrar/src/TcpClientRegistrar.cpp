@@ -137,7 +137,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
 
   //Get the mode from the client
   newClient.setTimeout(idWaitCount);
-  newClient.println("mode");
+  newClient.print("mode\n");
   String clientMode = newClient.readStringUntil('\n');
   clientMode.replace("\r", "");
   newClient.setTimeout(0);
@@ -154,7 +154,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
 
   //Get the identity from the client
   newClient.setTimeout(idWaitCount);
-  newClient.println("identify");
+  newClient.print("identify\n");
   String clientId = newClient.readStringUntil('\n');
   clientId.replace("\r", "");
   newClient.setTimeout(0);
