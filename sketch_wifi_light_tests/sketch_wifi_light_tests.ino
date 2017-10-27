@@ -45,6 +45,8 @@ CommandInterpreter ioCmd;
 WiFiServer listenSocket(23);
 TcpClientRegistrar clients;
 
+bool colorCycle = false;
+
 void setup() {
   Serial.begin(9600);
   delay(500);
@@ -88,7 +90,8 @@ void setup() {
 
   //Assign some commands to the command controller
   serialCmd.assign("s", commandSetColors);
-  ioCmd.assign("s", commandSetColors);
+  serialCmd.assign("c", commandCycle);
+  ioCmd = CommandInterpreter(serialCmd);
 
   //Allow iocontrol to connect, give long timeout for now (debugging)
   clients.assign("iocontrol", &clientIoControl);
@@ -110,6 +113,30 @@ void loop() {
   serialCmd.handle(Serial);
   if (clientIoControl && clientIoControl->connected())
     ioCmd.handle(*clientIoControl);
+
+  //If the auto mode is enabled, color cycle
+  if (colorCycle) {
+    float baseValue = (float)millis() / 3000.0f;
+    int redCalc   = (sin(baseValue                           ) + (32.0f / 255.0f)) * 224.0f;
+    int greenCalc = (sin(baseValue + ((2.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
+    int blueCalc  = (sin(baseValue + ((4.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
+    
+    uint8_t red   = redCalc   > 0 ? (uint8_t)redCalc   : 0;
+    uint8_t green = greenCalc > 0 ? (uint8_t)greenCalc : 0;
+    uint8_t blue  = blueCalc  > 0 ? (uint8_t)blueCalc  : 0;
+    uint8_t white = 0;
+    ledDriver.setColor((my9291_color_t){red, green, blue, white});
+  }
+}
+
+void commandCycle(Stream& port, int argc, const char** argv) {
+  if (argc != 1) {
+    port.println("ER");
+    return;
+  }
+
+  colorCycle = argv[0][0] == '1';
+  port.println("OK");
 }
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
@@ -119,11 +146,10 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     return;
   }
 
-  uint8_t red   = (uint8_t)atoi(argv[0]);
-  uint8_t green = (uint8_t)atoi(argv[1]);
-  uint8_t blue  = (uint8_t)atoi(argv[2]);
-  uint8_t white = (uint8_t)atoi(argv[3]);
-  ledDriver.setColor((my9291_color_t){red, green, blue, white});
+  ledDriver.setColor((my9291_color_t){(uint8_t)atoi(argv[0]),
+    (uint8_t)atoi(argv[1]),
+    (uint8_t)atoi(argv[2]),
+    (uint8_t)atoi(argv[3])});
 
   port.println("OK");
 }
