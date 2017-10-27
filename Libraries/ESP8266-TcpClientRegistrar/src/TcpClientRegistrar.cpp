@@ -16,7 +16,7 @@ int TcpClientRegistrar::assign(char* identity, WiFiClient** clientPointerAddress
 
   clients[idCount] = clientPointerAddress;
   int nameOffset = (ID_LENGTH + 1) * idCount;
-  for (int i = 0; identity[i] != '\0' && i < ID_LENGTH; i++) {;
+  for (int i = 0; identity[i] != '\0' && i < ID_LENGTH; i++) {
 
     identities[i + nameOffset] = identity[i];
     identities[i + nameOffset + 1] = '\0';

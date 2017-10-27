@@ -61,44 +61,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  /*
-  while(WiFi.status() != WL_CONNECTED) {
-    Serial.println("Waiting for connection...");
-    delay(5000);
-  }
-
-  delay(500);
-  Serial.println("Squirrel SmartLight firmware initialized");
-
-  //Register this node with the controller
-  Serial.print("Registering with controller");
-  WiFiClient registerConnection;
-  registerConnection.connect(IPAddress(192, 168, 1, 1), 23);
-  while (!registerConnection.connected()) {
-    Serial.print(".");
-    delay(500);
-  }
-  Serial.println("\nSuccess!");
-
-  yield();
-  String cmd = registerConnection.readStringUntil('\n');
-  if (!cmd.equals("mode"))
-    registerConnection.stop();
-  else {
-    registerConnection.println("register");
-    cmd = registerConnection.readStringUntil('\n');
-    if (!cmd.equals("identify"))
-      registerConnection.stop();
-    else {
-      registerConnection.println("lumen0");
-      registerConnection.stop();
-    }
-  }
-  */
-
   //Assign some commands to the command controller
   serialCmd.assign("s", commandSetColors);
   serialCmd.assign("c", commandCycle);
+  serialCmd.assign("b", commandBinaryColors);
   ioCmd = CommandInterpreter(serialCmd);
 
   //Allow iocontrol to connect, give long timeout for now (debugging)
@@ -192,18 +158,18 @@ void loop() {
 
 void commandCycle(Stream& port, int argc, const char** argv) {
   if (argc != 1) {
-    port.println("ER");
+    port.print("ER\n");
     return;
   }
 
   colorCycle = argv[0][0] == '1';
-  port.println("OK");
+  port.print("OK\n");
 }
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
 
   if (argc != 4) {
-    port.println("ER");
+    port.print("ER\n");
     return;
   }
 
@@ -212,6 +178,38 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     (uint8_t)atoi(argv[2]),
     (uint8_t)atoi(argv[3])});
 
-  port.println("OK");
+  port.print("OK\n");
+}
+
+void commandBinaryColors(Stream& port, int argc, const char** argv) {
+
+  static uint8_t red   = 0;
+  static uint8_t green = 0;
+  static uint8_t blue  = 0;
+  static uint8_t white = 0;
+
+  if (argc != 1) {
+    //port.print("ER\n");
+    return;
+  }
+  
+  uint8_t channelMask = argv[0][0];
+  bool redMask   = channelMask      & 0x01;
+  bool greenMask = channelMask >> 1 & 0x01;
+  bool blueMask  = channelMask >> 2 & 0x01;
+  bool whiteMask = channelMask >> 3 & 0x01;
+
+  if (redMask)   red   = argv[0][1];
+  else red   = 0;
+  if (greenMask) green = argv[0][2];
+  else green = 0;
+  if (blueMask)  blue  = argv[0][3];
+  else blue  = 0;
+  if (whiteMask) white = argv[0][4];
+  else white = 0;
+
+  ledDriver.setColor((my9291_color_t){red, green, blue, white});
+
+  //port.print("OK\n");
 }
 
