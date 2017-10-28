@@ -8,12 +8,13 @@ A network of ESP01 modules controls overhead lighting brightness and temperature
 
 1. To edit these sketches, you must first install Arduino IDE.
 2. Add the ESP8266 board option to your IDE (http://esp8266.github.io/Arduino/versions/2.2.0/doc/installing.html).
-3. Install the libraries for ESP8266 WiFi, in `External Libraries` folder.
-4. Install custom libraries, in `Libraries` folder. 
+3. Check that the custom ESP8266WiFi libraries are available (they should be)
+4. Install any external libraries using the ZIP library selection.
+5. Install custom libraries, in `Libraries` folder. 
     - On Windows, copy to `%USERPROFILE%\Documents\Arduino\libraries\`
 	- On MacOS, copy to `~/Documents/Arduino/libraries/`
-5. Choose the Generic ESP8266 for board type.
-6. Compile a blank sketch to see if it succeeds.
+6. Choose the Generic ESP8266 for board type.
+7. Compile a blank sketch to see if it succeeds.
 
 Code not compiling in a production branch? Double check that you have the most 
 recent versions of the custom libraries, as these may update frequently. You 
@@ -34,11 +35,3 @@ passwords present a security risk when placed in a public repository.
 ## Custom Library Code
 
 To ease in the simplicity of custom library code, libraries may be developed inside a sketch folder. Once these libraries are trusted and usable, they should be given a descriptor and installed like other Arduino libraries. Eventually, we do not want code copied between sketch folders, but during library development that will be ok. 
-
-## Checklist
-
-[=] Build reusable command interpreter library  
-[=] Make command methods take an argument array  
-[ ] Define server node command logic  
-[=] Define communication between nodes  
-[ ] ...

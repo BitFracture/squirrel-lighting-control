@@ -32,9 +32,9 @@ lightSock.send(bytearray("iocontrol\n", "UTF-8"));
 # Send some color choices
 while True:
     for q in range(20480):
-        i = (q) % 255;
-        j = (q + 85) % 255;
-        k = (q + 170) % 255;
+        i = (q // 10) % 255;
+        j = (q // 10 + 85) % 255;
+        k = (q // 10 + 170) % 255;
         lightSock.send(bytearray("s " + str(i) + " " + str(j) + " " + str(k) + " 0\n", "UTF-8"));
         print(lightSock.recv(256));
         print(i);
