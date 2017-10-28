@@ -6,7 +6,7 @@
  * Author:   Erik W. Greif
  * Date:     2017-10-26
  */
- 
+
 //ESP8266 libraries
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiAP.h>
@@ -45,7 +45,7 @@ CommandInterpreter ioCmd;
 WiFiServer listenSocket(23);
 TcpClientRegistrar clients;
 
-bool reconnect = false;
+bool reconnect = true;
 bool colorCycle = false;
 
 WiFiEventHandler disconnectedEventHandler;
@@ -91,7 +91,7 @@ void loop() {
       clientIoControl = NULL;
     }
     
-    Serial.print("Waiting for connection");
+    Serial.print("Wait");
     while(WiFi.status() != WL_CONNECTED) {
       Serial.print(".");
       delay(5000);
@@ -99,14 +99,14 @@ void loop() {
     Serial.println("");
   
     //Register this node with the controller
-    Serial.print("Registering with controller");
+    Serial.print("Reg");
     WiFiClient registerConnection;
-    registerConnection.connect(IPAddress(192, 168, 1, 1), 23);
+    registerConnection.connect(IPAddress(192, 168, 3, 1), 23);
     while (!registerConnection.connected()) {
       Serial.print(".");
       delay(500);
     }
-    Serial.println("\nSuccess!");
+    Serial.println("\nGood");
     
     String cmd = registerConnection.readStringUntil('\n');
     if (!cmd.equals("mode"))
@@ -117,10 +117,11 @@ void loop() {
       if (!cmd.equals("identify"))
         registerConnection.stop();
       else {
-        registerConnection.println("lumen0");
+        registerConnection.print("lumen0\n");
         registerConnection.stop();
       }
     }
+    Serial.println("Authed");
     reconnect = false;
 
     //Cycle colors to show connected
@@ -189,7 +190,7 @@ void commandBinaryColors(Stream& port, int argc, const char** argv) {
   static uint8_t white = 0;
 
   if (argc != 1) {
-    //port.print("ER\n");
+    port.print("ER\n");
     return;
   }
   
@@ -210,6 +211,6 @@ void commandBinaryColors(Stream& port, int argc, const char** argv) {
 
   ledDriver.setColor((my9291_color_t){red, green, blue, white});
 
-  //port.print("OK\n");
+  port.print("OK\n");
 }
 

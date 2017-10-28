@@ -1,26 +1,44 @@
 import socket;
 import time;
 
-remote = ("192.168.1.100", 23)
+# Connect to server to figure out where lumen0 is
+serverSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+serverSock.connect(("192.168.3.1", 23));
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
-sock.connect(remote);
+time.sleep(.025)
+print(serverSock.recv(256));
+serverSock.send(bytearray("persist\n", "UTF-8"));
+time.sleep(.025);
+print(serverSock.recv(256));
+serverSock.send(bytearray("iocontrol\n", "UTF-8"));
 
-print(sock.recv(10000));
-sock.send(bytearray("persist\n", "UTF-8"));
+time.sleep(.025);
+serverSock.send(bytearray("ip lumen0\n", "UTF-8"));
+time.sleep(.5);
+lumen0Ip = serverSock.recv(256).replace(b"\n", b"");
+print(lumen0Ip);
 
-print(sock.recv(10000));
-sock.send(bytearray("iocontrol\n", "UTF-8"));
+# Connect to lumen0
+lightSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+lightSock.connect((lumen0Ip, 23));
 
+time.sleep(.025)
+print(lightSock.recv(256));
+lightSock.send(bytearray("persist\n", "UTF-8"));
+time.sleep(.025);
+print(lightSock.recv(256));
+lightSock.send(bytearray("iocontrol\n", "UTF-8"));
+
+# Send some color choices
 while True:
-    for i in range(255):
-        sock.send(bytearray("s 0 0 0 " + str(i) + "\n", "UTF-8"));
+    for q in range(20480):
+        i = (q) % 255;
+        j = (q + 85) % 255;
+        k = (q + 170) % 255;
+        lightSock.send(bytearray("s " + str(i) + " " + str(j) + " " + str(k) + " 0\n", "UTF-8"));
+        print(lightSock.recv(256));
         print(i);
-        time.sleep(0.001);
+        time.sleep(0.0005);
 
-    for i in reversed(range(254)):
-        sock.send(bytearray("s 0 0 0 " + str(i) + "\n", "UTF-8"));
-        print(i);
-        time.sleep(0.001);
-
-sock.close();
+serverSock.close();
+lightSock.close();
