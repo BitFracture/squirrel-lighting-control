@@ -134,35 +134,35 @@ void handleReconnect() {
   
     //Register this node with the controller
     Serial.print("Reg\n");
-    WiFiClient registerConnection;
-    registerConnection.connect(IPAddress(192, 168, 3, 1), 23);
+    WiFiClient clientSquirrel;
+    clientSquirrel.connect(IPAddress(192, 168, 3, 1), 23);
 
     //Wait 5 seconds for TCP connect
-    for (int i = 10; !registerConnection.connected() && i > 0; i--) {
+    for (int i = 10; !clientSquirrel.connected() && i > 0; i--) {
       delay(500);
     }
-    if (!registerConnection.connected()) {
-      registerConnection.stop();
+    if (!clientSquirrel.connected()) {
+      clientSquirrel.stop();
       break;
     }
     Serial.print("Good\n");
 
-    registerConnection.setTimeout(5000);
-    String cmd = registerConnection.readStringUntil('\n');
+    clientSquirrel.setTimeout(5000);
+    String cmd = clientSquirrel.readStringUntil('\n');
     if (!cmd.equals("mode")) {
-      registerConnection.stop();
+      clientSquirrel.stop();
       break;
     }
     else {
-      registerConnection.print("register\n");
-      cmd = registerConnection.readStringUntil('\n');
+      clientSquirrel.print("register\n");
+      cmd = clientSquirrel.readStringUntil('\n');
       if (!cmd.equals("identify")) {
-        registerConnection.stop();
+        clientSquirrel.stop();
         break;
       }
       else {
-        registerConnection.print("lumen0\n");
-        registerConnection.stop();
+        clientSquirrel.print("lumen0\n");
+        clientSquirrel.stop();
       }
     }
     Serial.print("Authed\n");

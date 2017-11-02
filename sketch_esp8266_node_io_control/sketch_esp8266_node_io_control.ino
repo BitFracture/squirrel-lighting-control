@@ -21,80 +21,120 @@
 #include <WiFiUdp.h>
 
 //Pcf8591 ioChip(&Wire);
-WiFiClient registerConnection;
+WiFiClient clientSquirrel;
+WiFiClient clientLumen;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
+long lastCheckTime = 0;
+
+WiFiEventHandler disconnectedEventHandler;
 
 void setup() {
   Serial.begin(9600);
   delay(500);
-  Serial.println("Initialized");
+  Serial.print("Initialized\n");
+
+  disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-
-  
-  while(WiFi.status() != WL_CONNECTED) {
-    Serial.println("Waiting for connection...");
-    delay(5000);
-  }
-
-  //Register this node with the controller
-  Serial.print("Registering with controller");
-  registerConnection.connect(IPAddress(192, 168, 1, 100), 23);
-  while (!registerConnection.connected()) {
-    Serial.print(".");
-    delay(500);
-  }
-  Serial.println("\nSuccess!");
-
-  yield();
-  
-  String cmd = registerConnection.readStringUntil('\n');
-  if (!cmd.equals("mode")) {
-    Serial.print("Invalid mode command: \"");
-    for (int i = 0; i < cmd.length(); i++) {
-      Serial.print((int) cmd[i]);
-      Serial.print(" ");
-    }
-    Serial.println("\"");
-    registerConnection.stop();
-  } else {
-    registerConnection.println("persist");
-    cmd = registerConnection.readStringUntil('\n');
-    if (!cmd.equals("identify")) {
-      Serial.print("Invalid identify command: ");
-      Serial.println(cmd);
-      registerConnection.stop();
-    } else {
-      registerConnection.println("iocontrol");
-      Serial.println("\nAuthenticated!");
-    }
-  }
 }
 
 void loop() {
-  if (iiii.connected()) {
+  //Do nothing until we are connected to the server
+  handleReconnect();
+  
+  if (clientLumen.connected()) {
     /*
-    registerConnection.setNoDelay(false);
-    setLightColor(registerConnection, 0, 0, 0, (millis() / 20) % 255);
-    registerConnection.flush();
-    registerConnection.setNoDelay(true);
+    clientSquirrel.setNoDelay(false);
+    setLightColor(clientSquirrel, 0, 0, 0, (millis() / 20) % 255);
+    clientSquirrel.flush();
+    clientSquirrel.setNoDelay(true);
     */
+
+    /*
+    Serial.print((millis() / 200) % 255);
+    Serial.print(" \"");
+    Serial.print(clientSquirrel.readStringUntil('\n'));
+    Serial.print("\"\n");
+    */
+  }
+  else if (millis() - lastCheckTime > 1000) {
+    lastCheckTime = millis();
     
-//    Serial.print((millis() / 200) % 255);
-//    Serial.print(" \"");
-//    Serial.print(registerConnection.readStringUntil('\n'));
-//    Serial.println("\"");
+    //Connect to the bulb
+    clientSquirrel.print("ip lumen0\n");
+    String response = clientSquirrel.readStringUntil("\n");
+    IPAddress lumenAddress;
+    if (lumenAddress.fromString(response)) {
+      //TODO: Use a shared connection function, because tired of writing this crap
+    }
   }
 }
 
+void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
+
+  reconnect = true;
+}
+
 void handleReconnect() {
+
+  //TODO: Reconnect if server TCP connection lost
   
+  while (reconnect) {
+
+    //Clean up all connections
+    clientSquirrel.stop();
+    clientLumen.stop();
+    
+    //Wait for wifi for 5 seconds
+    Serial.print("Wait\n");
+    for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
+      delay(500);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      break;
+    }
+  
+    //Connect persistently with the controller
+    Serial.print("Reg\n");
+    clientSquirrel.connect(IPAddress(192, 168, 3, 1), 23);
+
+    //Wait 5 seconds for TCP connect
+    for (int i = 10; !clientSquirrel.connected() && i > 0; i--) {
+      delay(500);
+    }
+    if (!clientSquirrel.connected()) {
+      clientSquirrel.stop();
+      break;
+    }
+    Serial.print("Good\n");
+
+    clientSquirrel.setTimeout(5000);
+    String cmd = clientSquirrel.readStringUntil('\n');
+    if (!cmd.equals("mode")) {
+      clientSquirrel.stop();
+      break;
+    }
+    else {
+      clientSquirrel.print("persist\n");
+      cmd = clientSquirrel.readStringUntil('\n');
+      if (!cmd.equals("identify")) {
+        clientSquirrel.stop();
+        break;
+      }
+      else {
+        clientSquirrel.print("iocontrol\n");
+      }
+    }
+    Serial.print("Authed\n");
+
+    if (clientSquirrel.connected())
+      reconnect = false;
+  }
 }
 
 /*void sendBinaryColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
