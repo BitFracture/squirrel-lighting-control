@@ -107,7 +107,8 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
       (*clients[i])->stop();
       *clients[i] = NULL;
       Serial.print("DEBUG: Cleaned up connection ");
-      Serial.println((const char*)&identities[i * (ID_LENGTH + 1)]);
+      Serial.print((const char*)&identities[i * (ID_LENGTH + 1)]);
+	  Serial.print("\n");
     }
   }
 
@@ -139,7 +140,6 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   newClient.setTimeout(idWaitCount);
   newClient.print("mode\n");
   String clientMode = newClient.readStringUntil('\n');
-  clientMode.replace("\r", "");
   newClient.setTimeout(0);
 
   int clientModeVal = 0;
@@ -156,7 +156,6 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   newClient.setTimeout(idWaitCount);
   newClient.print("identify\n");
   String clientId = newClient.readStringUntil('\n');
-  clientId.replace("\r", "");
   newClient.setTimeout(0);
 
   if (clientModeVal == 0)
@@ -164,7 +163,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   else
     Serial.print("DEBUG: Registering client has identity=\"");
   Serial.print(clientId);
-  Serial.println("\"");
+  Serial.print("\"\n");
 
   //Register this client in the lookup table
   setIp(clientId.c_str(), newClient.remoteIP());
@@ -182,7 +181,8 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
     if (clientId.equals(name)) {
       if (*clientAdd) {
         Serial.print("DEBUG: Closing previous connection for ");
-        Serial.println(name);
+        Serial.print(name);
+        Serial.print("\n");
         (*clientAdd)->stop();
         delete (*clientAdd);
       }

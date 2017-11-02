@@ -55,17 +55,17 @@ void setup() {
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
   if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
-    Serial.println("Critical failure!");
+    Serial.print("Critical failure!\n");
   }
   WiFi.mode(WIFI_AP);
   softAPSetMaxConnections(MAX_AP_CLIENTS);
   
   delay(500);
   Serial.begin(9600);
-  Serial.println("DEBUG: WiFi AP is ready");
+  Serial.print("DEBUG: WiFi AP is ready\n");
 
   listenSocket.begin();
-  Serial.println("DEBUG: Server is ready");
+  Serial.print("DEBUG: Server is ready\n");
 
   //iocontrol commands
   ioCmd.assignDefault(commandNotFound);
@@ -174,7 +174,7 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
   Serial.print(clients.getConnectionTimeout());
   Serial.print("mS to ");
   Serial.print(timeout);
-  Serial.println("mS");
+  Serial.print("mS\n");
   
   clients.setConnectionTimeout(timeout);
 }

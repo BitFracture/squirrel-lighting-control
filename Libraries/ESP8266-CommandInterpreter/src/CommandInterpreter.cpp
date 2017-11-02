@@ -119,7 +119,7 @@ int CommandInterpreter::assignDefault(
 }
 
 /**
- * Handles commands if they are present (between % and \R\N)
+ * Handles commands if they are present (between % and \n)
  * 
  * @param port  The stream port to read for incomming commands (IP/UART/SoftSerial).
  */
@@ -137,8 +137,6 @@ void CommandInterpreter::handle(Stream& port) {
     //Retrieve value, handle exceptions
     char received = port.read();
     if (cmdPointer == 0 && prefix != '\0' && received != prefix)
-      continue;
-    if (received == '\r')
       continue;
 
     //Store the char, null terminate and increment

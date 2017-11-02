@@ -15,12 +15,14 @@ CommandInterpreter cmdInterpreter;
 
 Next, assign one or multiple commands to functions. When the stream sends the command "help" the function commandHelp(...) will be invoked. Note the arguments required for these functions, as they cannot change. The Stream reference here is the stream that invoked the command, so you may reply. `argc` and `argv` are standard for C and C++ main functions, except that the command is not included as an argument. In other words, 0 arguments means argc will be 0, not 1. 
 
+Notice, we don't use println. This would generate \r (carriage return) characters before each new line. If your client handles these ok, then feel welcome to do so. Our library and code bases do not generate nor handle the return character. 
+
 ```
 void commandHelp(Stream& source, int argc, const char** argv) {
-    source.println("Command Help");
-    source.println("");
-    source.println(" help = View this prompt");
-    source.println("");
+    source.print("Command Help\n");
+    source.print("\n");
+    source.print(" help = View this prompt\n");
+    source.print("\n");
 }
 
 void setup() {
