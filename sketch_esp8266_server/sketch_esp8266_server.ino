@@ -48,6 +48,10 @@ WiFiServer listenSocket(23);
 TcpClientRegistrar clients;
 
 void setup() {
+  //Turn wi-fi off (fix for soft reset)
+  WiFi.mode(WIFI_OFF);
+  delay(1000);
+  
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
   if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {

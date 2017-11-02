@@ -30,11 +30,7 @@ const int LED_CLCK_PIN = 15;
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 
-my9291 ledDriver = my9291(
-    LED_DATA_PIN, 
-    LED_CLCK_PIN, 
-    MY9291_COMMAND_DEFAULT
-);
+my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
 
 //When iocontrol connects, it will be here
 WiFiClient* clientIoControl = NULL;
@@ -47,11 +43,20 @@ TcpClientRegistrar clients;
 
 bool reconnect = true;
 bool colorCycle = false;
+uint8_t colors[5];
 
 WiFiEventHandler disconnectedEventHandler;
 
 void setup() {
-  Serial.begin(115200);
+  
+  //Initial light data
+  colors[0] = 0;
+  colors[1] = 0;
+  colors[2] = 0;
+  colors[3] = 255;
+  colors[4] = 0;
+
+  Serial.begin(9600);
   delay(500);
   Serial.println("Initialized");
 
@@ -74,65 +79,18 @@ void setup() {
   //Start listening for control connection
   listenSocket.begin();
   
-  ledDriver.setColor((my9291_color_t) {0, 0, 0, 255});
+  ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   ledDriver.setState(true);
 }
 
-void triggerReconnect(const WiFiEventStationModeDisconnected& event)
-{
+void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
+  
   reconnect = true;
 }
 
 void loop() {
-  if (reconnect) {
-
-    if (clientIoControl) {
-      clientIoControl->stop();
-      clientIoControl = NULL;
-    }
-    
-    Serial.print("Wait");
-    while(WiFi.status() != WL_CONNECTED) {
-      Serial.print(".");
-      delay(5000);
-    }
-    Serial.println("");
-  
-    //Register this node with the controller
-    Serial.print("Reg");
-    WiFiClient registerConnection;
-    registerConnection.connect(IPAddress(192, 168, 3, 1), 23);
-    while (!registerConnection.connected()) {
-      Serial.print(".");
-      delay(500);
-    }
-    Serial.println("\nGood");
-    
-    String cmd = registerConnection.readStringUntil('\n');
-    if (!cmd.equals("mode"))
-      registerConnection.stop();
-    else {
-      registerConnection.println("register");
-      cmd = registerConnection.readStringUntil('\n');
-      if (!cmd.equals("identify"))
-        registerConnection.stop();
-      else {
-        registerConnection.print("lumen0\n");
-        registerConnection.stop();
-      }
-    }
-    Serial.println("Authed");
-    reconnect = false;
-
-    //Cycle colors to show connected
-    ledDriver.setColor((my9291_color_t) { 255, 0, 0, 0 });
-    delay(500);
-    ledDriver.setColor((my9291_color_t) { 0, 255, 0, 0 });
-    delay(500);
-    ledDriver.setColor((my9291_color_t) { 0, 0, 255, 0 });
-    delay(500);
-    ledDriver.setColor((my9291_color_t) { 0, 0, 0, 255 });
-  }
+  //Do nothing until we are connected to the server
+  handleReconnect();
     
   //Handle incoming connections
   clients.handle(listenSocket);
@@ -154,6 +112,80 @@ void loop() {
     uint8_t blue  = blueCalc  > 0 ? (uint8_t)blueCalc  : 0;
     uint8_t white = 0;
     ledDriver.setColor((my9291_color_t){red, green, blue, white});
+  }
+}
+
+void handleReconnect() {
+  while (reconnect) {
+
+    if (clientIoControl) {
+      clientIoControl->stop();
+      clientIoControl = NULL;
+    }
+    
+    //Wait for wifi for 5 seconds
+    Serial.print("Wait\n");
+    for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
+      delay(500);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      break;
+    }
+  
+    //Register this node with the controller
+    Serial.print("Reg\n");
+    WiFiClient registerConnection;
+    registerConnection.connect(IPAddress(192, 168, 3, 1), 23);
+
+    //Wait 5 seconds for TCP connect
+    for (int i = 10; !registerConnection.connected() && i > 0; i--) {
+      delay(500);
+    }
+    if (!registerConnection.connected()) {
+      registerConnection.stop();
+      break;
+    }
+    Serial.print("Good\n");
+
+    registerConnection.setTimeout(5000);
+    String cmd = registerConnection.readStringUntil('\n');
+    if (!cmd.equals("mode")) {
+      registerConnection.stop();
+      break;
+    }
+    else {
+      registerConnection.println("register");
+      cmd = registerConnection.readStringUntil('\n');
+      if (!cmd.equals("identify")) {
+        registerConnection.stop();
+        break;
+      }
+      else {
+        registerConnection.print("lumen0\n");
+        registerConnection.stop();
+      }
+    }
+    Serial.println("Authed");
+    reconnect = false;
+
+    //Cycle colors to show connected
+    ledDriver.setColor((my9291_color_t) { 255, 0, 0, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 255, 0, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 0, 255, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 0, 0, 255 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 255, 0, 0, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 255, 0, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 0, 255, 0 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) { 0, 0, 0, 255 });
+    delay(250);
+    ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   }
 }
 

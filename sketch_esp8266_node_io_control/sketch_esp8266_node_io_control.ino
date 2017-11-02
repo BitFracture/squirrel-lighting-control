@@ -20,12 +20,12 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 
-
 //Pcf8591 ioChip(&Wire);
 WiFiClient registerConnection;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+bool reconnect = true;
 
 void setup() {
   Serial.begin(9600);
@@ -35,6 +35,9 @@ void setup() {
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+
+  
   while(WiFi.status() != WL_CONNECTED) {
     Serial.println("Waiting for connection...");
     delay(5000);
@@ -50,6 +53,7 @@ void setup() {
   Serial.println("\nSuccess!");
 
   yield();
+  
   String cmd = registerConnection.readStringUntil('\n');
   if (!cmd.equals("mode")) {
     Serial.print("Invalid mode command: \"");
@@ -73,24 +77,27 @@ void setup() {
   }
 }
 
-int timeCount = 0;
 void loop() {
-  if (registerConnection.connected()) {
-    
+  if (iiii.connected()) {
+    /*
     registerConnection.setNoDelay(false);
     setLightColor(registerConnection, 0, 0, 0, (millis() / 20) % 255);
     registerConnection.flush();
     registerConnection.setNoDelay(true);
-  
+    */
     
 //    Serial.print((millis() / 200) % 255);
 //    Serial.print(" \"");
-    //Serial.print(registerConnection.readStringUntil('\n'));
+//    Serial.print(registerConnection.readStringUntil('\n'));
 //    Serial.println("\"");
   }
 }
 
-void setLightColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
+void handleReconnect() {
+  
+}
+
+/*void sendBinaryColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
   
   // Create the mask by saving the first byte of rgbw in the mask
   int8_t mask = 0;
@@ -130,7 +137,7 @@ void setLightColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
   out.write(b);
   out.write(w);
   out.print("\n");
-
+*/
   /*Serial.print("b ");
   Serial.print(mask);
   Serial.print(" ");
@@ -142,4 +149,4 @@ void setLightColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
   Serial.print(" ");
   Serial.print(w);
   Serial.print("\n");*/
-}
+/*}*/
