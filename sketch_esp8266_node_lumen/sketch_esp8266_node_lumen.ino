@@ -58,7 +58,7 @@ void setup() {
 
   Serial.begin(9600);
   delay(500);
-  Serial.println("Initialized");
+  Serial.print("Initialized\n");
 
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
@@ -154,7 +154,7 @@ void handleReconnect() {
       break;
     }
     else {
-      registerConnection.println("register");
+      registerConnection.print("register\n");
       cmd = registerConnection.readStringUntil('\n');
       if (!cmd.equals("identify")) {
         registerConnection.stop();
@@ -165,7 +165,7 @@ void handleReconnect() {
         registerConnection.stop();
       }
     }
-    Serial.println("Authed");
+    Serial.print("Authed\n");
     reconnect = false;
 
     //Cycle colors to show connected
