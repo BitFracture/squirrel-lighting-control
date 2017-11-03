@@ -43,18 +43,29 @@ void setup() {
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 }
 
+uint32_t startTime, endTime;
+    
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
   
   if (clientLumen.connected()) {
-
-    uint8_t bLumen = (uint8_t)((sin(millis() / 1000.0f) + 1.0f) * 127.0f);
+    uint8_t rLumen = (uint8_t)((sin((millis() + 333.0f) / 1000.0f) + 1.0f) * 127.0f);
+    uint8_t gLumen = (uint8_t)((sin((millis() + 666.0f) / 1000.0f) + 1.0f) * 127.0f);
+    uint8_t bLumen = (uint8_t)((sin((millis() + 000.0f) / 1000.0f) + 1.0f) * 127.0f);
     
-	  clientLumen.print("s 0 0 ");
-    clientLumen.print(bLumen);
-    clientLumen.print("\n");
-
+    startTime = millis();
+    char* toSend = "s 00 00 00\n";
+    byteToString(rLumen, toSend + 2);
+    byteToString(gLumen, toSend + 5);
+    byteToString(bLumen, toSend + 8);
+    clientLumen.print(toSend);
+    
+    endTime = millis();
+  
+    Serial.print("Send time: ");
+    Serial.println(endTime - startTime);
+    
     clientLumen.readStringUntil('\n');
   }
   else if (millis() - lastCheckTime > 1000) {
@@ -66,7 +77,8 @@ void loop() {
     String response = clientSquirrel.readStringUntil('\n');
     IPAddress lumenAddress;
     if (lumenAddress.fromString(response)) {
-      connectClient(clientLumen, lumenAddress, 23, "iocontrol", true);
+      if (connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
+        clientLumen.setNoDelay(false);
     }
   }
 }
@@ -150,6 +162,16 @@ bool connectClient(WiFiClient& server, IPAddress ip, uint16_t port, const char* 
     server.stop();
     return true;
   }
+}
+
+/**
+ * Overwrites the first two characters with the hex equivalent of the byte given.
+ */
+void byteToString(uint8_t toConvert, char* writeStart) {
+  static char* charLookup = "0123456789ABCDEF";
+  
+  writeStart[1] = charLookup[ (toConvert       & 15)];
+  writeStart[0] = charLookup[((toConvert >> 4) & 15)];
 }
 
 /*void sendBinaryColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
