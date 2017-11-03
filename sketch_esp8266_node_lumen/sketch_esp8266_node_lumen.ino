@@ -206,15 +206,46 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     return;
   }
 
-  colors[0] = (uint8_t)atoi(argv[0]);
-  colors[1] = (uint8_t)atoi(argv[1]);
-  colors[2] = (uint8_t)atoi(argv[2]);
-  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
-  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
+  Serial.print("--------------\n");
+  Serial.print(argv[0]);
+  Serial.print(" ");
+  Serial.print(argv[1]);
+  Serial.print(" ");
+  Serial.print(argv[2]);
+  Serial.print("\n");
+  
+  colors[0] = hexToByte(argv[0]);
+  colors[1] = hexToByte(argv[1]);
+  colors[2] = hexToByte(argv[2]);
+  colors[3] = argc > 3 ? hexToByte(argv[3]) : 0;
+  colors[4] = argc > 4 ? hexToByte(argv[4]) : 0;
+
+  Serial.print(colors[0]);
+  Serial.print(" ");
+  Serial.print(colors[1]);
+  Serial.print(" ");
+  Serial.print(colors[2]);
+  Serial.print("\n");
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 
   port.print("OK\n");
+}
+
+uint8_t hexToByte(const char* twoChars) {
+  uint8_t output = 0;
+  for (int i = 0; i < 2; i++) {
+    output <<= 4;
+    
+    if (twoChars[i] >= 'A' && twoChars[i] <= 'F')
+      output |= (twoChars[i] - 'A') + 10;
+    else if (twoChars[i] >= 'a' && twoChars[i] <= 'f')
+      output |= (twoChars[i] - 'a') + 10;
+    else if (twoChars[i] >= '1' && twoChars[i] <= '9')
+      output |= (twoChars[i] - '0');
+  }
+  
+  return output;
 }
 
 /*void commandBinaryColors(Stream& port, int argc, const char** argv) {
