@@ -36,11 +36,11 @@ void setup() {
   delay(500);
   Serial.print("Initialized\n");
 
-  disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
-
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 }
 
 void loop() {
@@ -48,29 +48,25 @@ void loop() {
   handleReconnect();
   
   if (clientLumen.connected()) {
-    /*
-    clientSquirrel.setNoDelay(false);
-    setLightColor(clientSquirrel, 0, 0, 0, (millis() / 20) % 255);
-    clientSquirrel.flush();
-    clientSquirrel.setNoDelay(true);
-    */
 
-    /*
-    Serial.print((millis() / 200) % 255);
-    Serial.print(" \"");
-    Serial.print(clientSquirrel.readStringUntil('\n'));
-    Serial.print("\"\n");
-    */
+    uint8_t bLumen = (uint8_t)((sin(millis() / 1000.0f) + 1.0f) * 127.0f);
+    
+	  clientLumen.print("s 0 0 ");
+    clientLumen.print(bLumen);
+    clientLumen.print("\n");
+
+    clientLumen.readStringUntil('\n');
   }
   else if (millis() - lastCheckTime > 1000) {
     lastCheckTime = millis();
+    Serial.print("Attempt Lumen0 connect\n");
     
     //Connect to the bulb
     clientSquirrel.print("ip lumen0\n");
-    String response = clientSquirrel.readStringUntil("\n");
+    String response = clientSquirrel.readStringUntil('\n');
     IPAddress lumenAddress;
     if (lumenAddress.fromString(response)) {
-      //TODO: Use a shared connection function, because tired of writing this crap
+      connectClient(clientLumen, lumenAddress, 23, "iocontrol", true);
     }
   }
 }
@@ -83,6 +79,8 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 void handleReconnect() {
 
   //TODO: Reconnect if server TCP connection lost
+  if (!clientSquirrel.connected())
+    reconnect = true;
   
   while (reconnect) {
 
@@ -98,42 +96,59 @@ void handleReconnect() {
     if (WiFi.status() != WL_CONNECTED) {
       break;
     }
-  
-    //Connect persistently with the controller
-    Serial.print("Reg\n");
-    clientSquirrel.connect(IPAddress(192, 168, 3, 1), 23);
 
-    //Wait 5 seconds for TCP connect
-    for (int i = 10; !clientSquirrel.connected() && i > 0; i--) {
-      delay(500);
-    }
-    if (!clientSquirrel.connected()) {
-      clientSquirrel.stop();
-      break;
-    }
-    Serial.print("Good\n");
+    //Try to connect persistently to squirrel
+    if (connectClient(clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
+      reconnect = false;
+  }
+}
 
-    clientSquirrel.setTimeout(5000);
-    String cmd = clientSquirrel.readStringUntil('\n');
-    if (!cmd.equals("mode")) {
-      clientSquirrel.stop();
-      break;
+//Make static
+bool connectClient(WiFiClient& server, IPAddress ip, uint16_t port, const char* identity, bool persist) {
+
+  //Connect persistently with the controller
+  Serial.print("Reg\n");
+  server.connect(ip, port);
+
+  //Wait 5 seconds for TCP connect
+  for (int i = 10; !server.connected() && i > 0; i--) {
+    delay(500);
+  }
+  if (!server.connected()) {
+    server.stop();
+    return false;
+  }
+  Serial.print("Good\n");
+
+  server.setTimeout(5000);
+  String cmd = server.readStringUntil('\n');
+  if (!cmd.equals("mode")) {
+    server.stop();
+    return false;
+  }
+  else {
+    if (persist)
+      server.print("persist\n");
+    else
+      server.print("register\n");
+    
+    cmd = server.readStringUntil('\n');
+    if (!cmd.equals("identify")) {
+      server.stop();
+      return false;
     }
     else {
-      clientSquirrel.print("persist\n");
-      cmd = clientSquirrel.readStringUntil('\n');
-      if (!cmd.equals("identify")) {
-        clientSquirrel.stop();
-        break;
-      }
-      else {
-        clientSquirrel.print("iocontrol\n");
-      }
+      server.print(identity);
+      server.print("\n");
     }
-    Serial.print("Authed\n");
-
-    if (clientSquirrel.connected())
-      reconnect = false;
+  }
+  Serial.print("Authed\n");
+  
+  if (persist)
+    return server.connected();
+  else {
+    server.stop();
+    return true;
   }
 }
 

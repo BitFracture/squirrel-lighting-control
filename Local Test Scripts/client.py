@@ -33,13 +33,11 @@ lightSock.send(bytearray("iocontrol\n", "UTF-8"));
 # Send some color choices
 while True:
     for q in range(20480):
-        print("----");
+        print(str(q));
         i = (q // 10) % 255;
         j = (q // 10 + 85) % 255;
         k = (q // 10 + 170) % 255;
-        print("s");
         lightSock.send(bytearray("s " + str(i) + " " + str(j) + " " + str(k) + " 0\n", "UTF-8"));
-        print("r");
         try:
             print(lightSock.recv(256));
         except socket.timeout:

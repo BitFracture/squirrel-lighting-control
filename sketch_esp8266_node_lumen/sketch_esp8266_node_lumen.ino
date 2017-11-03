@@ -60,6 +60,8 @@ void setup() {
   delay(500);
   Serial.print("Initialized\n");
 
+  ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
+  ledDriver.setState(true);
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
   //Set up the wireless
@@ -69,7 +71,7 @@ void setup() {
   //Assign some commands to the command controller
   serialCmd.assign("s", commandSetColors);
   serialCmd.assign("c", commandCycle);
-  serialCmd.assign("b", commandBinaryColors);
+  //serialCmd.assign("b", commandBinaryColors);
   ioCmd = CommandInterpreter(serialCmd);
 
   //Allow iocontrol to connect, give long timeout for now (debugging)
@@ -78,9 +80,6 @@ void setup() {
 
   //Start listening for control connection
   listenSocket.begin();
-  
-  ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
-  ledDriver.setState(true);
 }
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
@@ -107,11 +106,12 @@ void loop() {
     int greenCalc = (sin(baseValue + ((2.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
     int blueCalc  = (sin(baseValue + ((4.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
     
-    uint8_t red   = redCalc   > 0 ? (uint8_t)redCalc   : 0;
-    uint8_t green = greenCalc > 0 ? (uint8_t)greenCalc : 0;
-    uint8_t blue  = blueCalc  > 0 ? (uint8_t)blueCalc  : 0;
-    uint8_t white = 0;
-    ledDriver.setColor((my9291_color_t){red, green, blue, white});
+    colors[0] = redCalc   > 0 ? (uint8_t)redCalc   : 0;
+    colors[1] = greenCalc > 0 ? (uint8_t)greenCalc : 0;
+    colors[2] = blueCalc  > 0 ? (uint8_t)blueCalc  : 0;
+    colors[3] = 0;
+    colors[4] = 0;
+    ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
   }
 }
 
@@ -201,20 +201,23 @@ void commandCycle(Stream& port, int argc, const char** argv) {
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
 
-  if (argc != 4) {
+  if (argc < 3 || argc > 5) {
     port.print("ER\n");
     return;
   }
 
-  ledDriver.setColor((my9291_color_t){(uint8_t)atoi(argv[0]),
-    (uint8_t)atoi(argv[1]),
-    (uint8_t)atoi(argv[2]),
-    (uint8_t)atoi(argv[3])});
+  colors[0] = (uint8_t)atoi(argv[0]);
+  colors[1] = (uint8_t)atoi(argv[1]);
+  colors[2] = (uint8_t)atoi(argv[2]);
+  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
+  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
+  
+  ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 
   port.print("OK\n");
 }
 
-void commandBinaryColors(Stream& port, int argc, const char** argv) {
+/*void commandBinaryColors(Stream& port, int argc, const char** argv) {
 
   static uint8_t red   = 0;
   static uint8_t green = 0;
@@ -244,5 +247,5 @@ void commandBinaryColors(Stream& port, int argc, const char** argv) {
   ledDriver.setColor((my9291_color_t){red, green, blue, white});
 
   port.print("OK\n");
-}
+}*/
 
