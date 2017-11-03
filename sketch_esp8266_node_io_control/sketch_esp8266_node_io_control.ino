@@ -50,21 +50,15 @@ void loop() {
   handleReconnect();
   
   if (clientLumen.connected()) {
-    uint8_t rLumen = (uint8_t)((sin((millis() + 333.0f) / 1000.0f) + 1.0f) * 127.0f);
-    uint8_t gLumen = (uint8_t)((sin((millis() + 666.0f) / 1000.0f) + 1.0f) * 127.0f);
-    uint8_t bLumen = (uint8_t)((sin((millis() + 000.0f) / 1000.0f) + 1.0f) * 127.0f);
+    uint8_t rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
+    uint8_t gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
+    uint8_t bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
     
-    startTime = millis();
     char* toSend = "s 00 00 00\n";
     byteToString(rLumen, toSend + 2);
     byteToString(gLumen, toSend + 5);
     byteToString(bLumen, toSend + 8);
     clientLumen.print(toSend);
-    
-    endTime = millis();
-  
-    Serial.print("Send time: ");
-    Serial.println(endTime - startTime);
     
     clientLumen.readStringUntil('\n');
   }
