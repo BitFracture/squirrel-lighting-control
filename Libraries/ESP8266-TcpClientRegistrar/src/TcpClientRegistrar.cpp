@@ -140,6 +140,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   newClient.setTimeout(idWaitCount);
   newClient.print("mode\n");
   String clientMode = newClient.readStringUntil('\n');
+  clientMode.replace("\r", "");
   newClient.setTimeout(0);
 
   int clientModeVal = 0;
@@ -156,6 +157,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   newClient.setTimeout(idWaitCount);
   newClient.print("identify\n");
   String clientId = newClient.readStringUntil('\n');
+  clientId.replace("\r", "");
   newClient.setTimeout(0);
 
   if (clientModeVal == 0)

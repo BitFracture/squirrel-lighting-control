@@ -217,8 +217,7 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   port.print("OK\n");
 }
 
-template <class T>
-T hexToByte(const char* hexStr) {
+template <typename T> T hexToByte(const char* hexStr) {
   T output = 0;
   int numberOfBytes = strlen(hexStr);
   for (int i = 0; i < numberOfBytes; i++) {
