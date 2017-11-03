@@ -136,6 +136,10 @@ void CommandInterpreter::handle(Stream& port) {
 
     //Retrieve value, handle exceptions
     char received = port.read();
+    
+    if (received == '\r') 
+      continue;
+    
     if (cmdPointer == 0 && prefix != '\0' && received != prefix)
       continue;
 

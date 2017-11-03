@@ -205,16 +205,35 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     port.print("ER\n");
     return;
   }
-
-  colors[0] = (uint8_t)atoi(argv[0]);
-  colors[1] = (uint8_t)atoi(argv[1]);
-  colors[2] = (uint8_t)atoi(argv[2]);
-  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
-  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
+  
+  colors[0] = hexToByte<uint8_t>(argv[0]);
+  colors[1] = hexToByte<uint8_t>(argv[1]);
+  colors[2] = hexToByte<uint8_t>(argv[2]);
+  colors[3] = argc > 3 ? hexToByte<uint8_t>(argv[3]) : 0;
+  colors[4] = argc > 4 ? hexToByte<uint8_t>(argv[4]) : 0;
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 
   port.print("OK\n");
+}
+
+template <typename T> T hexToByte(const char* hexStr) {
+  T output = 0;
+  int numberOfBytes = strlen(hexStr);
+  for (int i = 0; i < numberOfBytes; i++) {
+    output <<= 4;
+    
+    if (hexStr[i] >= 'A' && hexStr[i] <= 'F')
+      output |= static_cast<uint8_t>((hexStr[i] - 'A') + 10);
+      
+    else if (hexStr[i] >= 'a' && hexStr[i] <= 'f')
+      output |= static_cast<uint8_t>((hexStr[i] - 'a') + 10);
+      
+    else if (hexStr[i] >= '1' && hexStr[i] <= '9')
+      output |= static_cast<uint8_t>(hexStr[i] - '0');
+  }
+  
+  return output;
 }
 
 /*void commandBinaryColors(Stream& port, int argc, const char** argv) {
