@@ -16,7 +16,7 @@ int TcpClientRegistrar::assign(char* identity, WiFiClient** clientPointerAddress
 
   clients[idCount] = clientPointerAddress;
   int nameOffset = (ID_LENGTH + 1) * idCount;
-  for (int i = 0; identity[i] != '\0' && i < ID_LENGTH; i++) {;
+  for (int i = 0; identity[i] != '\0' && i < ID_LENGTH; i++) {
 
     identities[i + nameOffset] = identity[i];
     identities[i + nameOffset + 1] = '\0';
@@ -107,7 +107,8 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
       (*clients[i])->stop();
       *clients[i] = NULL;
       Serial.print("DEBUG: Cleaned up connection ");
-      Serial.println((const char*)&identities[i * (ID_LENGTH + 1)]);
+      Serial.print((const char*)&identities[i * (ID_LENGTH + 1)]);
+	  Serial.print("\n");
     }
   }
 
@@ -137,7 +138,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
 
   //Get the mode from the client
   newClient.setTimeout(idWaitCount);
-  newClient.println("mode");
+  newClient.print("mode\n");
   String clientMode = newClient.readStringUntil('\n');
   clientMode.replace("\r", "");
   newClient.setTimeout(0);
@@ -154,7 +155,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
 
   //Get the identity from the client
   newClient.setTimeout(idWaitCount);
-  newClient.println("identify");
+  newClient.print("identify\n");
   String clientId = newClient.readStringUntil('\n');
   clientId.replace("\r", "");
   newClient.setTimeout(0);
@@ -164,7 +165,7 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   else
     Serial.print("DEBUG: Registering client has identity=\"");
   Serial.print(clientId);
-  Serial.println("\"");
+  Serial.print("\"\n");
 
   //Register this client in the lookup table
   setIp(clientId.c_str(), newClient.remoteIP());
@@ -182,7 +183,8 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
     if (clientId.equals(name)) {
       if (*clientAdd) {
         Serial.print("DEBUG: Closing previous connection for ");
-        Serial.println(name);
+        Serial.print(name);
+        Serial.print("\n");
         (*clientAdd)->stop();
         delete (*clientAdd);
       }

@@ -26,8 +26,8 @@
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
-IPAddress localIp(192,168,1,1);
-IPAddress gateway(192,168,1,1);
+IPAddress localIp(192,168,3,1);
+IPAddress gateway(192,168,3,1);
 IPAddress subnet(255,255,255,0);
 
 const uint8_t MAX_AP_CLIENTS = 12;
@@ -41,32 +41,39 @@ WiFiClient* clientIoControl = NULL;
 CommandInterpreter serialCmd;
 CommandInterpreter mobileCmd;
 CommandInterpreter laptopCmd;
+CommandInterpreter ioCmd;
 
 //TCP server and the client id registrar: Handle reconnects seamlessly
 WiFiServer listenSocket(23);
 TcpClientRegistrar clients;
 
 void setup() {
+  //Turn wi-fi off (fix for soft reset)
+  WiFi.mode(WIFI_OFF);
+  delay(1000);
+  
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
   if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
-    Serial.println("Critical failure!");
+    Serial.print("Critical failure!\n");
   }
   WiFi.mode(WIFI_AP);
   softAPSetMaxConnections(MAX_AP_CLIENTS);
   
   delay(500);
   Serial.begin(9600);
-  Serial.println("DEBUG: WiFi AP is ready");
+  Serial.print("DEBUG: WiFi AP is ready\n");
 
   listenSocket.begin();
-  Serial.println("DEBUG: Server is ready");
+  Serial.print("DEBUG: Server is ready\n");
+
+  //iocontrol commands
+  ioCmd.assignDefault(commandNotFound);
+  ioCmd.assign("ip", commandGetIp);
 
   //Register user commands to handler functions
   serialCmd.assignDefault(commandNotFound);
-  serialCmd.assign("diag", commandGetDiagnostics);
   serialCmd.assign("ip", commandGetIp);
-  serialCmd.assign("scan", commandScanNetworks);
   serialCmd.assign("identify", commandIdentify);
   serialCmd.assign("help", commandHelp);
   serialCmd.assign("test-args", commandTestArgs);
@@ -91,10 +98,12 @@ void loop() {
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
     mobileCmd.handle(*clientLaptop);
+  if (clientIoControl)
+    ioCmd.handle(*clientIoControl);
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {
-  port.println("Unknown command");
+  port.print("Unknown command\n");
 }
 
 void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
@@ -102,10 +111,13 @@ void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
 }
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
-  if (argc <= 0)
-    port.println(WiFi.softAPIP());
+  if (argc <= 0) {
+    port.print(WiFi.softAPIP());
+    port.print("\n");
+  }
   else {
-    port.println(clients.findIp(argv[0]));
+    port.print(clients.findIp(argv[0]));
+    port.print("\n");
   }
 }
 
@@ -117,30 +129,28 @@ void commandScanNetworks(Stream& port, int argc, const char** argv) {
     port.print(WiFi.RSSI(i));
     port.print(", ");
     port.print(WiFi.channel(i));
-    port.println(")");
+    port.print(")\n");
   }
 }
 
 void commandIdentify(Stream& port, int argc, const char** argv) {
-  port.println("squirrel");
+  port.print("squirrel\n");
 }
 
 void commandHelp(Stream& port, int argc, const char** argv) {
-  port.println("/======================================\\");
-  port.println("|       Squirrel Lighting Server       |");
-  port.println("\\======================================/");
-  port.println("");
-  port.println("User Command Help");
-  port.println("");
-  port.println("> diag .......... ESP diagnostic report");
-  port.println("> ip ............ Get server IP");
-  port.println("> scan .......... Scan available wifi");
-  port.println("> identify ...... Get net identity");
-  port.println("> help .......... Command syntax");
-  port.println("> test-args ..... Test argument parser");
-  port.println("> set-timeout ... Millis to respond to");
-  port.println("                  connection commands");
-  port.println("");
+  port.print("/======================================\\\n");
+  port.print("|       Squirrel Lighting Server       |\n");
+  port.print("\\======================================/\n");
+  port.print("\n");
+  port.print("User Command Help\n");
+  port.print("\n");
+  port.print("> ip ............ Get IP by identity\n");
+  port.print("> identify ...... Get net identity\n");
+  port.print("> help .......... Command syntax\n");
+  port.print("> test-args ..... Test argument parser\n");
+  port.print("> set-timeout ... Millis to respond to\n");
+  port.print("                  connection commands\n");
+  port.print("\n");
 }
 
 void commandTestArgs(Stream& port, int argc, const char** argv) {
@@ -148,7 +158,8 @@ void commandTestArgs(Stream& port, int argc, const char** argv) {
     port.print("Argument ");
     port.print(i);
     port.print(": ");
-    port.println(argv[i]);
+    port.print(argv[i]);
+    port.print("\n");
   }
 }
 
@@ -163,7 +174,7 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
   Serial.print(clients.getConnectionTimeout());
   Serial.print("mS to ");
   Serial.print(timeout);
-  Serial.println("mS");
+  Serial.print("mS\n");
   
   clients.setConnectionTimeout(timeout);
 }
