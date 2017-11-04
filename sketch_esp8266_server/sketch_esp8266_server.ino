@@ -112,12 +112,12 @@ void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
   if (argc <= 0) {
-    port.print(WiFi.softAPIP());
-    port.print("\n");
+    String toPrint = WiFi.softAPIP().toString() + "\n";
+    port.print(toPrint);
   }
   else {
-    port.print(clients.findIp(argv[0]));
-    port.print("\n");
+    String toPrint = clients.findIp(argv[0]).toString() + "\n";
+    port.print(toPrint);
   }
 }
 

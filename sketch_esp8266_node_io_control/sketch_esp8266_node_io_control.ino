@@ -50,7 +50,6 @@ uint32_t startTime, endTime;
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
-  
   if (clientLumen.connected()) {
     uint8_t rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
     uint8_t gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
@@ -63,6 +62,7 @@ void loop() {
     clientLumen.print(toSend);
     
     clientLumen.readStringUntil('\n');
+    clientLumen.flush();
   }
   else if (millis() - lastCheckTime > 1000) {
     lastCheckTime = millis();
@@ -71,10 +71,12 @@ void loop() {
     //Connect to the bulb
     clientSquirrel.print("ip lumen0\n");
     String response = clientSquirrel.readStringUntil('\n');
+    Serial.print(response);
     IPAddress lumenAddress;
     if (lumenAddress.fromString(response)) {
       if (TcpClientRegistrar::connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
         clientLumen.setNoDelay(false);
+        clientLumen.setTimeout(1000);
     }
   }
 }
@@ -102,7 +104,7 @@ void handleReconnect() {
       delay(500);
     }
     if (WiFi.status() != WL_CONNECTED) {
-      break;
+      continue;
     }
 
     //Try to connect persistently to squirrel
