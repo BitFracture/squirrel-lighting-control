@@ -20,6 +20,8 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 
+#include <TcpClientRegistrar.h>
+
 //Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
 WiFiClient clientLumen;
@@ -71,7 +73,7 @@ void loop() {
     String response = clientSquirrel.readStringUntil('\n');
     IPAddress lumenAddress;
     if (lumenAddress.fromString(response)) {
-      if (connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
+      if (TcpClientRegistrar::connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
         clientLumen.setNoDelay(false);
     }
   }
@@ -104,57 +106,9 @@ void handleReconnect() {
     }
 
     //Try to connect persistently to squirrel
-    if (connectClient(clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
+    if (TcpClientRegistrar::connectClient(
+	        clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
       reconnect = false;
-  }
-}
-
-//Make static
-bool connectClient(WiFiClient& server, IPAddress ip, uint16_t port, const char* identity, bool persist) {
-
-  //Connect persistently with the controller
-  Serial.print("Reg\n");
-  server.connect(ip, port);
-
-  //Wait 5 seconds for TCP connect
-  for (int i = 10; !server.connected() && i > 0; i--) {
-    delay(500);
-  }
-  if (!server.connected()) {
-    server.stop();
-    return false;
-  }
-  Serial.print("Good\n");
-
-  server.setTimeout(5000);
-  String cmd = server.readStringUntil('\n');
-  if (!cmd.equals("mode")) {
-    server.stop();
-    return false;
-  }
-  else {
-    if (persist)
-      server.print("persist\n");
-    else
-      server.print("register\n");
-    
-    cmd = server.readStringUntil('\n');
-    if (!cmd.equals("identify")) {
-      server.stop();
-      return false;
-    }
-    else {
-      server.print(identity);
-      server.print("\n");
-    }
-  }
-  Serial.print("Authed\n");
-  
-  if (persist)
-    return server.connected();
-  else {
-    server.stop();
-    return true;
   }
 }
 
@@ -168,56 +122,3 @@ void byteToString(uint8_t toConvert, char* writeStart) {
   writeStart[0] = charLookup[((toConvert >> 4) & 15)];
 }
 
-/*void sendBinaryColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
-  
-  // Create the mask by saving the first byte of rgbw in the mask
-  int8_t mask = 0;
-  if (w == 0)
-    w = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (b == 0)
-    b = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (g == 0)
-    g = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (r == 0)
-    r = 1;
-  else
-    mask |= 1;
-
-  mask |= 0x80;
-
-  // Send the color values
-  out.print("b ");
-  out.write(mask);
-  out.write(r);
-  out.write(g);
-  out.write(b);
-  out.write(w);
-  out.print("\n");
-*/
-  /*Serial.print("b ");
-  Serial.print(mask);
-  Serial.print(" ");
-  Serial.print(r);
-  Serial.print(" ");
-  Serial.print(g);
-  Serial.print(" ");
-  Serial.print(b);
-  Serial.print(" ");
-  Serial.print(w);
-  Serial.print("\n");*/
-/*}*/

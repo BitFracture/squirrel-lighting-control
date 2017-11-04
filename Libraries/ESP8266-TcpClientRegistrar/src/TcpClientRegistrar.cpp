@@ -194,3 +194,71 @@ void TcpClientRegistrar::handle(WiFiServer& listenServer) {
   }
   newClient.stop();
 }
+
+bool TcpClientRegistrar::connectClient(WiFiClient& server, IPAddress ip, uint16_t port, const char* identity, bool persist) {
+
+  Serial.print("TCP Connect as ");
+  Serial.print(identity);
+  Serial.print(" to ");
+  Serial.print(ip);
+  Serial.print(":");
+  Serial.print(port);
+  Serial.print("\n");
+  
+  //Connect now
+  server.connect(ip, port);
+
+  //Wait 1 second for TCP connect
+  for (int i = 10; !server.connected() && i > 0; i--) {
+    delay(100);
+  }
+  if (!server.connected()) {
+    Serial.print("TIMEOUT\n");
+    server.stop();
+    return false;
+  }
+  Serial.print("Connected\n");
+
+  server.setTimeout(1000);
+  String cmd = server.readStringUntil('\n');
+  if (!cmd.equals("mode")) {
+    Serial.print("BAD REQ\n");
+    server.stop();
+    return false;
+  }
+  else {
+    if (persist)
+      server.print("persist\n");
+    else
+      server.print("register\n");
+    
+    cmd = server.readStringUntil('\n');
+    if (!cmd.equals("identify")) {
+      Serial.print("BAD REQ\n");
+      server.stop();
+      return false;
+    }
+    else {
+      server.print(identity);
+      server.print("\n");
+    }
+  }
+  Serial.print("Authenticated\n");
+  
+  if (persist) {
+    if (server.connected()) {
+		Serial.print("Persisting\n");
+		return true;
+	}
+	else {
+		Serial.print("FAIL\n");
+		server.stop();
+		return false;
+	}
+  }
+  else {
+	Serial.print("Disconnecting\n");
+    server.stop();
+    return true;
+  }
+}

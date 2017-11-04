@@ -133,39 +133,11 @@ void handleReconnect() {
     }
   
     //Register this node with the controller
-    Serial.print("Reg\n");
     WiFiClient clientSquirrel;
-    clientSquirrel.connect(IPAddress(192, 168, 3, 1), 23);
-
-    //Wait 5 seconds for TCP connect
-    for (int i = 10; !clientSquirrel.connected() && i > 0; i--) {
-      delay(500);
-    }
-    if (!clientSquirrel.connected()) {
-      clientSquirrel.stop();
+    if (!TcpClientRegistrar::connectClient(clientSquirrel, IPAddress(192, 168, 3, 1), 23, "lumen0", false)) {
       break;
     }
-    Serial.print("Good\n");
-
-    clientSquirrel.setTimeout(5000);
-    String cmd = clientSquirrel.readStringUntil('\n');
-    if (!cmd.equals("mode")) {
-      clientSquirrel.stop();
-      break;
-    }
-    else {
-      clientSquirrel.print("register\n");
-      cmd = clientSquirrel.readStringUntil('\n');
-      if (!cmd.equals("identify")) {
-        clientSquirrel.stop();
-        break;
-      }
-      else {
-        clientSquirrel.print("lumen0\n");
-        clientSquirrel.stop();
-      }
-    }
-    Serial.print("Authed\n");
+    
     reconnect = false;
 
     //Cycle colors to show connected
@@ -235,36 +207,4 @@ template <typename T> T hexToByte(const char* hexStr) {
   
   return output;
 }
-
-/*void commandBinaryColors(Stream& port, int argc, const char** argv) {
-
-  static uint8_t red   = 0;
-  static uint8_t green = 0;
-  static uint8_t blue  = 0;
-  static uint8_t white = 0;
-
-  if (argc != 1) {
-    port.print("ER\n");
-    return;
-  }
-  
-  uint8_t channelMask = argv[0][0];
-  bool redMask   = channelMask      & 0x01;
-  bool greenMask = channelMask >> 1 & 0x01;
-  bool blueMask  = channelMask >> 2 & 0x01;
-  bool whiteMask = channelMask >> 3 & 0x01;
-
-  if (redMask)   red   = argv[0][1];
-  else red   = 0;
-  if (greenMask) green = argv[0][2];
-  else green = 0;
-  if (blueMask)  blue  = argv[0][3];
-  else blue  = 0;
-  if (whiteMask) white = argv[0][4];
-  else white = 0;
-
-  ledDriver.setColor((my9291_color_t){red, green, blue, white});
-
-  port.print("OK\n");
-}*/
 
