@@ -262,3 +262,25 @@ bool TcpClientRegistrar::connectClient(WiFiClient& server, IPAddress ip, uint16_
     return true;
   }
 }
+
+/**
+ * All nodes using the command interpreter should respond to a command that 
+ * consts only of "____" with the response being non-blank.
+ */
+bool TcpClientRegistrar::probeConnection(WiFiClient& client, uint16_t timeout) {
+  
+  if (timeout != 0) {
+	client.setTimeout(timeout);
+  }
+  
+  client.flush();
+  client.print("____\n");
+  String response = client.readStringUntil('\n');
+  
+  return !response.equals("");
+}
+
+
+
+
+

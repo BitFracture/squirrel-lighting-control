@@ -25,9 +25,11 @@
 //Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
 WiFiClient clientLumen;
+WiFiUDP broadcast;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+const IPAddress BROADCAST_ADDR(192, 168, 3, 255);
 bool reconnect = true;
 long lastCheckTime = 0;
 
@@ -48,9 +50,35 @@ void setup() {
 uint32_t startTime, endTime;
     
 void loop() {
+  static uint8_t rLumen, gLumen, bLumen;
+  static uint32_t lastTime, thisTime;
+  
   //Do nothing until we are connected to the server
   handleReconnect();
-  if (clientLumen.connected()) {
+
+  //Rate limit the UDP packets to about 60PPS
+  thisTime = millis();
+  if (thisTime - lastTime > 16) {
+    lastTime = thisTime;
+    
+    //Construct data
+    rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
+    gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
+    bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+    
+    char* toSend = "s 00 00 00\n";
+    byteToString(rLumen, toSend + 2);
+    byteToString(gLumen, toSend + 5);
+    byteToString(bLumen, toSend + 8);
+  
+    //TEST: Try the UDP broadcast method
+    broadcast.beginPacket(BROADCAST_ADDR, 23);
+    broadcast.write(toSend);
+    broadcast.endPacket();
+  }
+
+  //Send the light(s) some test data!
+  /*if (clientLumen.connected()) {
     uint8_t rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
     uint8_t gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
     uint8_t bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
@@ -59,26 +87,41 @@ void loop() {
     byteToString(rLumen, toSend + 2);
     byteToString(gLumen, toSend + 5);
     byteToString(bLumen, toSend + 8);
-    clientLumen.print(toSend);
-    
-    clientLumen.readStringUntil('\n');
+
     clientLumen.flush();
+    clientLumen.print(toSend);
+    String response = clientLumen.readStringUntil('\n');
+    
+    if (!response.equals("OK")) {
+      Serial.print("Bad response, ");
+      if (TcpClientRegistrar::probeConnection(clientLumen)) {
+        Serial.print("probe succeeded\n");
+      } else {
+        Serial.print("probe FAILED\n");
+        clientLumen.stop();
+      }
+    }
   }
+  //Connect to the light
   else if (millis() - lastCheckTime > 1000) {
     lastCheckTime = millis();
     Serial.print("Attempt Lumen0 connect\n");
     
     //Connect to the bulb
+    clientSquirrel.flush();
     clientSquirrel.print("ip lumen0\n");
     String response = clientSquirrel.readStringUntil('\n');
-    Serial.print(response);
+    
     IPAddress lumenAddress;
-    if (lumenAddress.fromString(response)) {
-      if (TcpClientRegistrar::connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
+    if (lumenAddress.fromString(response) && lumenAddress != 0) {
+      if (TcpClientRegistrar::connectClient(clientLumen, lumenAddress, 23, "iocontrol", true)) {
         clientLumen.setNoDelay(false);
         clientLumen.setTimeout(1000);
+      }
+    } else {
+      Serial.print("INVALID IP\n");
     }
-  }
+  }*/
 }
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
@@ -97,6 +140,7 @@ void handleReconnect() {
     //Clean up all connections
     clientSquirrel.stop();
     clientLumen.stop();
+    broadcast.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -106,6 +150,9 @@ void handleReconnect() {
     if (WiFi.status() != WL_CONNECTED) {
       continue;
     }
+
+    //Open broadcast port for lumen data
+    broadcast.begin(23);
 
     //Try to connect persistently to squirrel
     if (TcpClientRegistrar::connectClient(
