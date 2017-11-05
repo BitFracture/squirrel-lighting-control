@@ -29,6 +29,10 @@ const int LED_CLCK_PIN = 15;
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 
+//Our definition of "warm" varies from platform to platform... how to do this?
+const uint8_t warmColor[] = {255, 128, 0,   64,   0};
+const uint8_t coolColor[] = {  0,   0, 0,  255,   0};
+
 my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
 
 //When iocontrol connects, it will be here
@@ -65,6 +69,7 @@ void setup() {
 
   //Assign some commands to the command controllers
   serialCmd.assign("s", commandSetColors);
+  serialCmd.assign("t", commandSetTemp);
   serialCmd.assignDefault(commandUnknown);
   ioCmd = CommandInterpreter(serialCmd);
 }
@@ -120,6 +125,22 @@ void handleReconnect() {
 
 void commandUnknown(Stream& port, int argc, const char** argv) {
   port.print("ER\n");
+}
+
+void commandSetTemp(Stream& port, int argc, const char** argv) {
+  if (argc != 1)
+    port.print("ER\n");
+
+  //The multiplier defines where we are from cool to warm
+  float multiplier = hexToByte<uint8_t>(argv[0]) / 255.0f;
+
+  for (int i = 0; i < 5; i ++) {
+    colors[i] = (uint8_t)((float)warmColor[i] + 
+                ((float)coolColor[i] - 
+                (float)warmColor[i]) * multiplier);
+  }
+
+  ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 }
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
