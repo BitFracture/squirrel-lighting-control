@@ -29,7 +29,7 @@ WiFiUDP broadcast;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
-const IPAddress BROADCAST_ADDR(192, 168, 3, 255);
+const IPAddress BROADCAST_ADDR(192, 168, 3, 100);
 bool reconnect = true;
 long lastCheckTime = 0;
 
@@ -48,7 +48,8 @@ void setup() {
 }
 
 uint32_t startTime, endTime;
-    
+uint32_t baseTime = 0;
+
 void loop() {
   static uint8_t rLumen, gLumen, bLumen;
   static uint32_t lastTime, thisTime;
@@ -56,9 +57,9 @@ void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
 
-  //Rate limit the UDP packets to about 60PPS
+  //Rate limit the UDP packets to about 30FPS/PPS
   thisTime = millis();
-  if (thisTime - lastTime > 16) {
+  if (thisTime - lastTime > 32) {
     lastTime = thisTime;
     
     //Construct data

@@ -23,7 +23,6 @@
 
 //Custom libraries
 #include <CommandInterpreter.h>
-#include <TcpClientRegistrar.h>
  
 const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
@@ -33,14 +32,9 @@ const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
 
 //When iocontrol connects, it will be here
-WiFiClient* clientIoControl = NULL;
+WiFiUDP clientIoControl;
 CommandInterpreter serialCmd;
 CommandInterpreter ioCmd;
-
-//Allow connections and register clients
-WiFiServer listenSocket(23);
-WiFiUDP lightControl;
-TcpClientRegistrar clients;
 
 bool reconnect = true;
 bool colorCycle = false;
@@ -69,18 +63,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  //Assign some commands to the command controller
+  //Assign some commands to the command controllers
   serialCmd.assign("s", commandSetColors);
-  serialCmd.assign("c", commandCycle);
   serialCmd.assignDefault(commandUnknown);
   ioCmd = CommandInterpreter(serialCmd);
-
-  //Allow iocontrol to connect, give long timeout for now (debugging)
-  clients.assign("iocontrol", &clientIoControl);
-  clients.setConnectionTimeout(10000);
-
-  //Start listening for control connection
-  listenSocket.begin();
 }
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
@@ -88,62 +74,22 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
   reconnect = true;
 }
 
-//int packetCount = 0;
-//char incomingPacket[256];
-
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
-    
-  //Handle incoming connections
-  clients.handle(listenSocket);
   
-  //Handle incoming commands
+  //Handle incoming commands (Serial)
   serialCmd.handle(Serial);
-  if (clientIoControl && clientIoControl->connected())
-    ioCmd.handle(*clientIoControl);
 
-  //Handle UDP control stream (from broadcasts)
-  /*int packetSize = lightControl.parsePacket();
-  if (packetSize)
-  {
-    packetCount++;
-    Serial.printf(
-        "Received %d bytes from %s, port %d\n", packetSize, 
-        lightControl.remoteIP().toString().c_str(), lightControl.remotePort());
-    int len = lightControl.read(&incomingPacket[0], 255);
-    incomingPacket[len] = 0;
-    Serial.printf("UDP packet %d contents: %s\n", packetCount, incomingPacket);
-  }*/
-  //ioCmd.handle(lightControl);
-  if (lightControl.available() > 0) {
-    Serial.print(lightControl.read());
-  }
-
-  //If the auto mode is enabled, color cycle
-  if (colorCycle) {
-    float baseValue = (float)millis() / 3000.0f;
-    int redCalc   = (sin(baseValue                           ) + (32.0f / 255.0f)) * 224.0f;
-    int greenCalc = (sin(baseValue + ((2.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
-    int blueCalc  = (sin(baseValue + ((4.0 * 3.14159) / 3.0f)) + (32.0f / 255.0f)) * 224.0f;
-    
-    colors[0] = redCalc   > 0 ? (uint8_t)redCalc   : 0;
-    colors[1] = greenCalc > 0 ? (uint8_t)greenCalc : 0;
-    colors[2] = blueCalc  > 0 ? (uint8_t)blueCalc  : 0;
-    colors[3] = 0;
-    colors[4] = 0;
-    ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
-  }
+  //Handle UDP data stream (from iocontrol)
+  ioCmd.handleUdp(clientIoControl);
 }
 
 void handleReconnect() {
   while (reconnect) {
 
-    if (clientIoControl) {
-      clientIoControl->stop();
-      clientIoControl = NULL;
-    }
-    lightControl.stop();
+    //Close the UDP data socket
+    clientIoControl.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -155,26 +101,18 @@ void handleReconnect() {
     }
 
     //Open udp port for lumen data
-    lightControl.begin(23);
-  
-    //Register this node with the controller
-    WiFiClient clientSquirrel;
-    if (!TcpClientRegistrar::connectClient(clientSquirrel, IPAddress(192, 168, 3, 1), 23, "lumen0", false)) {
-      break;
-    }
+    clientIoControl.begin(23);
     
     reconnect = false;
 
     //Cycle colors to show connected
-    ledDriver.setColor((my9291_color_t) { 255, 0, 0, 0, 0 });
+    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
     delay(200);
-    ledDriver.setColor((my9291_color_t) { 0, 255, 0, 0, 0 });
+    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
     delay(200);
-    ledDriver.setColor((my9291_color_t) { 0, 0, 255, 0, 0 });
+    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
     delay(200);
-    ledDriver.setColor((my9291_color_t) { 0, 0, 0, 255, 0 });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 0, 0, 0, 0, 255 });
+    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
     delay(200);
     ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   }
@@ -182,16 +120,6 @@ void handleReconnect() {
 
 void commandUnknown(Stream& port, int argc, const char** argv) {
   port.print("ER\n");
-}
-
-void commandCycle(Stream& port, int argc, const char** argv) {
-  if (argc != 1) {
-    port.print("ER\n");
-    return;
-  }
-
-  colorCycle = argv[0][0] == '1';
-  port.print("OK\n");
 }
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
