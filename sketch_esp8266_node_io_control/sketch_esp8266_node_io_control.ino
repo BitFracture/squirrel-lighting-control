@@ -22,8 +22,9 @@
 
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
+#include <Pcf8591.h>
 
-//Pcf8591 ioChip(&Wire);
+Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
@@ -42,6 +43,7 @@ void setup() {
   Serial.begin(9600);
   delay(500);
   Serial.print("Initialized\n");
+  Wire.begin(2, 0);
 
   //Set up the wireless
   WiFi.mode(WIFI_STA);
@@ -50,12 +52,9 @@ void setup() {
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 }
 
-uint32_t startTime, endTime;
-uint32_t baseTime = 0;
-
 void loop() {
   static uint8_t rLumen, gLumen, bLumen;
-  static uint32_t lastTime, thisTime;
+  static uint32_t lastSendTime, thisSendTime, lastSampleTime, thisSampleTime;
   
   //Do nothing until we are connected to the server
   handleReconnect();
@@ -84,21 +83,34 @@ void loop() {
     }
   }
 
-  //Rate limit the UDP packets to about 30FPS/PPS
-  thisTime = millis();
-  if (thisTime - lastTime > 32) {
-    lastTime = thisTime;
+  //Capture audio level from chip
+  static uint8_t level = 0;
+  thisSampleTime = millis();
+  if (thisSampleTime - lastSampleTime > 5) {
+    lastSampleTime = thisSampleTime;
+    
+    level = (uint8_t)(((int)level * 9 + ioChip.read(0, 0)) / 10);
+  }
+
+  //Send color data, rate limit to about 30FPS/PPS
+  thisSendTime = millis();
+  if (thisSendTime - lastSendTime > 32) {
+    lastSendTime = thisSendTime;
     
     //Construct data
+    
     rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
     gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
     bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
     
-    char* toSend = "s 00 00 00\n";
+    char* toSend = "s 00 00 00 00\n";
+    
     byteToString(rLumen, toSend + 2);
     byteToString(gLumen, toSend + 5);
     byteToString(bLumen, toSend + 8);
-  
+    
+    //byteToString(level, toSend + 11);
+    
     //Send the UDP update to each discovered node
     for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
       dataBroadcast.beginPacket(lumenNodes[i], 23);
