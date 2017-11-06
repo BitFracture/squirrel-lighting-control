@@ -28,15 +28,17 @@ const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+const IPAddress broadcastAddress(192, 168, 3, 255);
 
 //Our definition of "warm" varies from platform to platform... how to do this?
-const uint8_t warmColor[] = {255, 128, 0,   64,   0};
-const uint8_t coolColor[] = {  0,   0, 0,  255,   0};
+const uint8_t warmColor[] = {255, 128,  0,   64,   0};
+const uint8_t coolColor[] = {  0,   0, 64,  255,   0};
 
 my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
 
 //When iocontrol connects, it will be here
 WiFiUDP clientIoControl;
+WiFiUDP broadcast; 
 CommandInterpreter serialCmd;
 CommandInterpreter ioCmd;
 
@@ -79,9 +81,22 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
   reconnect = true;
 }
 
+uint32_t lastComTime = 0;
+
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
+
+  //If we haven't heard from anyone in a while, throw out a discovery packet
+  if (millis() - lastComTime > 5000) {
+    
+    //UDP Broadcast ourself!
+    broadcast.beginPacket(broadcastAddress, 23);
+    broadcast.print("d"); //d = discover
+    broadcast.endPacket();
+
+    lastComTime = millis();
+  }
   
   //Handle incoming commands (Serial)
   serialCmd.handle(Serial);
@@ -128,6 +143,9 @@ void commandUnknown(Stream& port, int argc, const char** argv) {
 }
 
 void commandSetTemp(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
+  
   if (argc != 1)
     port.print("ER\n");
 
@@ -144,6 +162,8 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
 }
 
 void commandSetColors(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
 
   if (argc < 3 || argc > 5) {
     port.print("ER\n");

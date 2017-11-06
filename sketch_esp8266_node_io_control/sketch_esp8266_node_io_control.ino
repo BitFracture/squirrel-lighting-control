@@ -21,17 +21,20 @@
 #include <WiFiUdp.h>
 
 #include <TcpClientRegistrar.h>
+#include <CommandInterpreter.h>
 
 //Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
-WiFiClient clientLumen;
-WiFiUDP broadcast;
+WiFiUDP clientDiscover;
+WiFiUDP dataBroadcast;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
-const IPAddress BROADCAST_ADDR(192, 168, 3, 100);
 bool reconnect = true;
 long lastCheckTime = 0;
+
+const int MAX_LUMEN_NODES = 16;
+IPAddress lumenNodes[MAX_LUMEN_NODES];
 
 WiFiEventHandler disconnectedEventHandler;
 
@@ -57,6 +60,30 @@ void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
 
+  //Catch any discovery packets from lumen nodes ("d")
+  char discBuffer;
+  int packetSize = clientDiscover.parsePacket();
+  if (packetSize) {
+    
+    discBuffer = 0;
+    IPAddress newClientIP = clientDiscover.remoteIP();
+    
+    clientDiscover.read(&discBuffer, 1);
+    if (discBuffer == 'd') {
+
+      int i = 0;
+      for (; i < MAX_LUMEN_NODES && lumenNodes[i] != 0 && lumenNodes[i] != newClientIP; i++);
+      if (i < MAX_LUMEN_NODES && lumenNodes[i] != newClientIP) {
+        Serial.print("Lumen node ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.print(newClientIP);
+        Serial.print('\n');
+        lumenNodes[i] = newClientIP;
+      }
+    }
+  }
+
   //Rate limit the UDP packets to about 30FPS/PPS
   thisTime = millis();
   if (thisTime - lastTime > 32) {
@@ -72,57 +99,13 @@ void loop() {
     byteToString(gLumen, toSend + 5);
     byteToString(bLumen, toSend + 8);
   
-    //TEST: Try the UDP broadcast method
-    broadcast.beginPacket(BROADCAST_ADDR, 23);
-    broadcast.write(toSend);
-    broadcast.endPacket();
-  }
-
-  //Send the light(s) some test data!
-  /*if (clientLumen.connected()) {
-    uint8_t rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-    uint8_t gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-    uint8_t bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
-    
-    char* toSend = "s 00 00 00\n";
-    byteToString(rLumen, toSend + 2);
-    byteToString(gLumen, toSend + 5);
-    byteToString(bLumen, toSend + 8);
-
-    clientLumen.flush();
-    clientLumen.print(toSend);
-    String response = clientLumen.readStringUntil('\n');
-    
-    if (!response.equals("OK")) {
-      Serial.print("Bad response, ");
-      if (TcpClientRegistrar::probeConnection(clientLumen)) {
-        Serial.print("probe succeeded\n");
-      } else {
-        Serial.print("probe FAILED\n");
-        clientLumen.stop();
-      }
+    //Send the UDP update to each discovered node
+    for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
+      dataBroadcast.beginPacket(lumenNodes[i], 23);
+      dataBroadcast.write(toSend);
+      dataBroadcast.endPacket();
     }
   }
-  //Connect to the light
-  else if (millis() - lastCheckTime > 1000) {
-    lastCheckTime = millis();
-    Serial.print("Attempt Lumen0 connect\n");
-    
-    //Connect to the bulb
-    clientSquirrel.flush();
-    clientSquirrel.print("ip lumen0\n");
-    String response = clientSquirrel.readStringUntil('\n');
-    
-    IPAddress lumenAddress;
-    if (lumenAddress.fromString(response) && lumenAddress != 0) {
-      if (TcpClientRegistrar::connectClient(clientLumen, lumenAddress, 23, "iocontrol", true)) {
-        clientLumen.setNoDelay(false);
-        clientLumen.setTimeout(1000);
-      }
-    } else {
-      Serial.print("INVALID IP\n");
-    }
-  }*/
 }
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
@@ -140,8 +123,7 @@ void handleReconnect() {
 
     //Clean up all connections
     clientSquirrel.stop();
-    clientLumen.stop();
-    broadcast.stop();
+    clientDiscover.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -152,8 +134,8 @@ void handleReconnect() {
       continue;
     }
 
-    //Open broadcast port for lumen data
-    broadcast.begin(23);
+    //Open port for lumen broadcast discovery
+    clientDiscover.begin(23);
 
     //Try to connect persistently to squirrel
     if (TcpClientRegistrar::connectClient(
