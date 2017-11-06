@@ -156,20 +156,62 @@ void CommandInterpreter::handle(Stream& port) {
   }
 
   if (entryPointer != NULL) {
-    
-      //Generate the command pointer
-      char* command = entryPointer;
-      char* bufPtr = entryPointer;
-      for (; *bufPtr != ' ' && *bufPtr != '\0'; bufPtr++);
-      *bufPtr = '\0';
-      
-      //Find the args
-      for (bufPtr++; *bufPtr == ' ' && *bufPtr != '\0'; bufPtr++);
-      char* arguments = bufPtr;
-
-      //Invoke the function
-      execute(port, command, arguments);
+    process(port, entryPointer);
   }
+}
+
+/**
+ * Handle UDP packets as commands.
+ * Note: No command prefix supported at this time. 
+ */
+void CommandInterpreter::handleUdp(WiFiUDP& port) {
+  
+  int packetSize = port.parsePacket();
+  if (!packetSize)
+	  return;
+  
+  char* bufferPointer = &cmdBuffer[0];
+  int len = port.read(bufferPointer, CMD_BUFFER_SIZE);
+  
+  //Check the command prefix
+  if (prefix != '\0') {
+	if (bufferPointer[0] == prefix)
+		bufferPointer++;
+	else
+		return;
+  }
+  
+  //Null terminate and find new line for command end
+  cmdBuffer[len] = 0;
+  for (int i = 0; cmdBuffer[i] != 0; i++) {
+	if (cmdBuffer[i] == '\n') {
+	  cmdBuffer[i] = '\0';
+	  break;
+	}
+  }
+  
+  process(nullStream, bufferPointer);
+}
+
+/**
+ * Take a command buffer pointer, chop into a command an an argument string.
+ * The execute function will split the arguments apart. (FOR NOW)
+ * TO-do: Move the argument splitting to this function.
+ */
+void CommandInterpreter::process(Stream& port, char* entryPointer) {
+  
+  //Generate the command pointer
+  char* command = entryPointer;
+  char* bufPtr = entryPointer;
+  for (; *bufPtr != ' ' && *bufPtr != '\0'; bufPtr++);
+  *bufPtr = '\0';
+  
+  //Find the args
+  for (bufPtr++; *bufPtr == ' ' && *bufPtr != '\0'; bufPtr++);
+  char* arguments = bufPtr;
+
+  //Invoke the function
+  execute(port, command, arguments);
 }
 
 /**
