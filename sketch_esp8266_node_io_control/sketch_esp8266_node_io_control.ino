@@ -1,6 +1,6 @@
 /** 
  * The Flying Squirrels: Squirrel Lighting Controller
- * Node:     Lumen0 (WiFi Light 0)
+ * Node:     IO Control
  * Hardware: ESP8266-01[S] and MY9291 LED Driver
  * Purpose:  Allow controller to connect and set LED brightnesses
  * Author:   Erik W. Greif
@@ -34,6 +34,19 @@ const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
 long lastCheckTime = 0;
 
+const int MODE_MANUAL_HUE = 0;
+const int MODE_MANUAL_TEMP = 1;
+const int MODE_HUE = 2;
+const int MODE_AUDIO = 3;
+
+uint8_t colorRed = 0;
+uint8_t colorGreen = 0;
+uint8_t colorBlue = 0;
+uint8_t temperature = 0;
+int outputMode = MODE_MANUAL_TEMP;
+
+CommandInterpreter squirrelCmd;
+
 const int MAX_LUMEN_NODES = 16;
 IPAddress lumenNodes[MAX_LUMEN_NODES];
 
@@ -50,15 +63,23 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
+
+  squirrelCmd.assign("m", commandSetOutputMode);
+  squirrelCmd.assign("t", commandSetTemp);
 }
 
 void loop() {
   static uint8_t rLumen, gLumen, bLumen;
   static uint32_t lastSendTime, thisSendTime, lastSampleTime, thisSampleTime;
-  
+
   //Do nothing until we are connected to the server
   handleReconnect();
 
+  //Handle commands
+  squirrelCmd.handle(Serial);
+  if (clientSquirrel.connected())
+    squirrelCmd.handle(clientSquirrel);
+  
   //Catch any discovery packets from lumen nodes ("d")
   char discBuffer;
   int packetSize = clientDiscover.parsePacket();
@@ -97,19 +118,33 @@ void loop() {
   if (thisSendTime - lastSendTime > 32) {
     lastSendTime = thisSendTime;
     
-    //Construct data
-    
-    rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-    gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-    bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
-    
-    char* toSend = "s 00 00 00 00\n";
-    
-    byteToString(rLumen, toSend + 2);
-    byteToString(gLumen, toSend + 5);
-    byteToString(bLumen, toSend + 8);
-    
-    //byteToString(level, toSend + 11);
+    //Construct command
+    char* toSend = "";
+
+    if (outputMode == MODE_HUE) {
+      toSend = "s 00 00 00\n";
+      rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
+      gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
+      bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+      
+      byteToString(rLumen, toSend + 2);
+      byteToString(gLumen, toSend + 5);
+      byteToString(bLumen, toSend + 8);
+    }
+    else if (outputMode == MODE_AUDIO) {
+      toSend = "s 00 00 00 00\n";
+      byteToString(level, toSend + 11);
+    }
+    else if (outputMode == MODE_MANUAL_HUE) {
+      toSend = "s 00 00 00\n";
+      byteToString(colorRed,   toSend + 2);
+      byteToString(colorGreen, toSend + 5);
+      byteToString(colorBlue,  toSend + 8);
+    }
+    else if (outputMode == MODE_MANUAL_TEMP) {
+      toSend = "t 00\n";
+      byteToString(temperature, toSend + 2);
+    }
     
     //Send the UDP update to each discovered node
     for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
@@ -154,6 +189,38 @@ void handleReconnect() {
 	        clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
       reconnect = false;
   }
+}
+
+void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
+
+  if (argc != 1) {
+    reply.print("ER\n");
+    return;
+  }
+
+  if (argv[0][0] == '0')
+    outputMode = MODE_MANUAL_HUE;
+  else if (argv[0][0] == '1')
+    outputMode = MODE_MANUAL_TEMP;
+  else if (argv[0][0] == '2')
+    outputMode = MODE_HUE;
+  else if (argv[0][0] == '3')
+    outputMode = MODE_AUDIO;
+  
+  reply.print("OK\n");
+}
+
+void commandSetTemp(Stream& reply, int argc, const char** argv) {
+
+  if (argc != 1) {
+    reply.print("ER\n");
+    return;
+  }
+
+  outputMode = MODE_MANUAL_TEMP;
+  temperature = (uint8_t)atoi(argv[0]);
+  
+  reply.print("OK\n");
 }
 
 /**
