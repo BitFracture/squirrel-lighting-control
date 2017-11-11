@@ -65,6 +65,7 @@ void setup() {
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
   squirrelCmd.assign("m", commandSetOutputMode);
+  squirrelCmd.assign("c", commandSetColor);
   squirrelCmd.assign("t", commandSetTemp);
 }
 
@@ -219,6 +220,21 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
 
   outputMode = MODE_MANUAL_TEMP;
   temperature = (uint8_t)atoi(argv[0]);
+  
+  reply.print("OK\n");
+}
+
+void commandSetColor(Stream& reply, int argc, const char** argv) {
+
+  if (argc != 3) {
+    reply.print("ER\n");
+    return;
+  }
+
+  outputMode = MODE_MANUAL_HUE;
+  colorRed   = (uint8_t)atoi(argv[0]);
+  colorGreen = (uint8_t)atoi(argv[1]);
+  colorBlue  = (uint8_t)atoi(argv[2]);
   
   reply.print("OK\n");
 }
