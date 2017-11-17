@@ -26,6 +26,7 @@
 
 Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
+WiFiClient clientDaylight;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
 
@@ -38,6 +39,7 @@ const int MODE_MANUAL_HUE = 0;
 const int MODE_MANUAL_TEMP = 1;
 const int MODE_HUE = 2;
 const int MODE_AUDIO = 3;
+const int MODE_TEMP = 4;
 
 uint8_t colorRed = 0;
 uint8_t colorGreen = 0;
@@ -112,8 +114,8 @@ void loop() {
     lastSampleTime = thisSampleTime;
     
     level = (uint8_t)(((int)level * 9 + ioChip.read(0, 0)) / 10);
-    Serial.print(",");
-    Serial.print(level);
+    //Serial.print(",");
+    //Serial.print(level);
   }
 
   //Send color data, rate limit to about 30FPS/PPS
@@ -148,6 +150,15 @@ void loop() {
       toSend = "t 00\n";
       byteToString(temperature, toSend + 2);
     }
+    else if (outputMode == MODE_TEMP) {
+      toSend = "t 00\n";
+      
+      if (clientDaylight.connected()) {
+        clientDaylight.print("g\n");
+        uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
+        byteToString(sensorBrightness, toSend + 2);
+      }
+    }
     
     //Send the UDP update to each discovered node
     for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
@@ -165,7 +176,7 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
 void handleReconnect() {
 
-  //TODO: Reconnect if server TCP connection lost
+  //Reconnect if server TCP connection lost
   if (!clientSquirrel.connected())
     reconnect = true;
   
@@ -174,6 +185,7 @@ void handleReconnect() {
     //Clean up all connections
     clientSquirrel.stop();
     clientDiscover.stop();
+    clientDaylight.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -192,6 +204,23 @@ void handleReconnect() {
 	        clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
       reconnect = false;
   }
+
+  //Only connect to clientDaylight when we are successfull connected to server
+  //    delay connect attempts to 2 per second
+  static uint32_t lastTime = millis();
+  uint32_t currentTime = millis();
+  if (currentTime - lastTime > 500 && !reconnect && !clientDaylight.connected()) {
+    Serial.print("Attempt connect to daylight\n");
+    lastTime = currentTime;
+    
+    clientSquirrel.print("ip daylight\n");
+    IPAddress daylightIp;
+    if (daylightIp.fromString(clientSquirrel.readStringUntil('\n')) && daylightIp != 0) {
+      
+      //Persistent connect to daylight
+      TcpClientRegistrar::connectClient(clientDaylight, daylightIp, 23, "iocontrol", true);
+    }
+  }
 }
 
 void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
@@ -209,6 +238,8 @@ void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
     outputMode = MODE_HUE;
   else if (argv[0][0] == '3')
     outputMode = MODE_AUDIO;
+  else if (argv[0][0] == '4')
+    outputMode = MODE_TEMP;
   
   reply.print("OK\n");
 }
@@ -220,8 +251,12 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
     return;
   }
 
-  outputMode = MODE_MANUAL_TEMP;
-  temperature = (uint8_t)atoi(argv[0]);
+  if (argv[0][0] == 'a')
+    outputMode = MODE_TEMP;
+  else {
+    outputMode = MODE_MANUAL_TEMP;
+    temperature = (uint8_t)atoi(argv[0]);
+  }
   
   reply.print("OK\n");
 }
@@ -244,7 +279,7 @@ void commandSetColor(Stream& reply, int argc, const char** argv) {
 /**
  * Overwrites the first two characters with the hex equivalent of the byte given.
  */
-void byteToString(uint8_t toConvert, char* writeStart) {
+void byteToString(uint8_t toConvert, char* writeStart) { 
   static char* charLookup = "0123456789ABCDEF";
   
   writeStart[1] = charLookup[ (toConvert       & 15)];

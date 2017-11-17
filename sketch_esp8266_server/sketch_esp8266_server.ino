@@ -214,7 +214,12 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
     return;
   }
 
-  sprintf(&cmdOutBuffer[0], "t %s\n", argv[0]);
+  if (strcmp("auto", argv[0]) == 0) {
+    sprintf(cmdOutBuffer, "t a\n");
+  } else {
+    sprintf(cmdOutBuffer, "t %s\n", argv[0]);
+  }
+
   clientIoControl->print(&cmdOutBuffer[0]);
   port.print("OK\n");
 }
