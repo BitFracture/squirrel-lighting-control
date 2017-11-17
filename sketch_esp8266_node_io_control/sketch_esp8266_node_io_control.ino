@@ -1,6 +1,6 @@
 /** 
  * The Flying Squirrels: Squirrel Lighting Controller
- * Node:     Lumen0 (WiFi Light 0)
+ * Node:     IO Control
  * Hardware: ESP8266-01[S] and MY9291 LED Driver
  * Purpose:  Allow controller to connect and set LED brightnesses
  * Author:   Erik W. Greif
@@ -20,14 +20,37 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 
-//Pcf8591 ioChip(&Wire);
+#include <TcpClientRegistrar.h>
+#include <CommandInterpreter.h>
+#include <Pcf8591.h>
+
+Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
-WiFiClient clientLumen;
+WiFiClient clientDaylight;
+WiFiUDP clientDiscover;
+WiFiUDP dataBroadcast;
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
 long lastCheckTime = 0;
+
+const int MODE_MANUAL_HUE = 0;
+const int MODE_MANUAL_TEMP = 1;
+const int MODE_HUE = 2;
+const int MODE_AUDIO = 3;
+const int MODE_TEMP = 4;
+
+uint8_t colorRed = 0;
+uint8_t colorGreen = 0;
+uint8_t colorBlue = 0;
+uint8_t temperature = 0;
+int outputMode = MODE_MANUAL_TEMP;
+
+CommandInterpreter squirrelCmd;
+
+const int MAX_LUMEN_NODES = 16;
+IPAddress lumenNodes[MAX_LUMEN_NODES];
 
 WiFiEventHandler disconnectedEventHandler;
 
@@ -35,44 +58,113 @@ void setup() {
   Serial.begin(9600);
   delay(500);
   Serial.print("Initialized\n");
+  Wire.begin(2, 0);
 
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
+
+  squirrelCmd.assign("m", commandSetOutputMode);
+  squirrelCmd.assign("c", commandSetColor);
+  squirrelCmd.assign("t", commandSetTemp);
 }
 
-uint32_t startTime, endTime;
-    
 void loop() {
+  static uint8_t rLumen, gLumen, bLumen;
+  static uint32_t lastSendTime, thisSendTime, lastSampleTime, thisSampleTime;
+
   //Do nothing until we are connected to the server
   handleReconnect();
+
+  //Handle commands
+  squirrelCmd.handle(Serial);
+  if (clientSquirrel.connected())
+    squirrelCmd.handle(clientSquirrel);
   
-  if (clientLumen.connected()) {
-    uint8_t rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-    uint8_t gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-    uint8_t bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+  //Catch any discovery packets from lumen nodes ("d")
+  char discBuffer;
+  int packetSize = clientDiscover.parsePacket();
+  if (packetSize) {
     
-    char* toSend = "s 00 00 00\n";
-    byteToString(rLumen, toSend + 2);
-    byteToString(gLumen, toSend + 5);
-    byteToString(bLumen, toSend + 8);
-    clientLumen.print(toSend);
+    discBuffer = 0;
+    IPAddress newClientIP = clientDiscover.remoteIP();
     
-    clientLumen.readStringUntil('\n');
+    clientDiscover.read(&discBuffer, 1);
+    if (discBuffer == 'd') {
+
+      int i = 0;
+      for (; i < MAX_LUMEN_NODES && lumenNodes[i] != 0 && lumenNodes[i] != newClientIP; i++);
+      if (i < MAX_LUMEN_NODES && lumenNodes[i] != newClientIP) {
+        Serial.print("Lumen node ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.print(newClientIP);
+        Serial.print('\n');
+        lumenNodes[i] = newClientIP;
+      }
+    }
   }
-  else if (millis() - lastCheckTime > 1000) {
-    lastCheckTime = millis();
-    Serial.print("Attempt Lumen0 connect\n");
+
+  //Capture audio level from chip
+  static uint8_t level = 0;
+  thisSampleTime = millis();
+  if (thisSampleTime - lastSampleTime > 5) {
+    lastSampleTime = thisSampleTime;
     
-    //Connect to the bulb
-    clientSquirrel.print("ip lumen0\n");
-    String response = clientSquirrel.readStringUntil('\n');
-    IPAddress lumenAddress;
-    if (lumenAddress.fromString(response)) {
-      if (connectClient(clientLumen, lumenAddress, 23, "iocontrol", true))
-        clientLumen.setNoDelay(false);
+    level = (uint8_t)(((int)level * 9 + ioChip.read(0, 0)) / 10);
+    //Serial.print(",");
+    //Serial.print(level);
+  }
+
+  //Send color data, rate limit to about 30FPS/PPS
+  thisSendTime = millis();
+  if (thisSendTime - lastSendTime > 32) {
+    lastSendTime = thisSendTime;
+    
+    //Construct command
+    char* toSend = "";
+
+    if (outputMode == MODE_HUE) {
+      toSend = "s 00 00 00\n";
+      rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
+      gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
+      bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+      
+      byteToString(rLumen, toSend + 2);
+      byteToString(gLumen, toSend + 5);
+      byteToString(bLumen, toSend + 8);
+    }
+    else if (outputMode == MODE_AUDIO) {
+      toSend = "s 00 00 00 00\n";
+      byteToString(level, toSend + 11);
+    }
+    else if (outputMode == MODE_MANUAL_HUE) {
+      toSend = "s 00 00 00\n";
+      byteToString(colorRed,   toSend + 2);
+      byteToString(colorGreen, toSend + 5);
+      byteToString(colorBlue,  toSend + 8);
+    }
+    else if (outputMode == MODE_MANUAL_TEMP) {
+      toSend = "t 00\n";
+      byteToString(temperature, toSend + 2);
+    }
+    else if (outputMode == MODE_TEMP) {
+      toSend = "t 00\n";
+      
+      if (clientDaylight.connected()) {
+        clientDaylight.print("g\n");
+        uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
+        byteToString(sensorBrightness, toSend + 2);
+      }
+    }
+    
+    //Send the UDP update to each discovered node
+    for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
+      dataBroadcast.beginPacket(lumenNodes[i], 23);
+      dataBroadcast.write(toSend);
+      dataBroadcast.endPacket();
     }
   }
 }
@@ -84,7 +176,7 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
 void handleReconnect() {
 
-  //TODO: Reconnect if server TCP connection lost
+  //Reconnect if server TCP connection lost
   if (!clientSquirrel.connected())
     reconnect = true;
   
@@ -92,7 +184,8 @@ void handleReconnect() {
 
     //Clean up all connections
     clientSquirrel.stop();
-    clientLumen.stop();
+    clientDiscover.stop();
+    clientDaylight.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -100,124 +193,96 @@ void handleReconnect() {
       delay(500);
     }
     if (WiFi.status() != WL_CONNECTED) {
-      break;
+      continue;
     }
 
+    //Open port for lumen broadcast discovery
+    clientDiscover.begin(23);
+
     //Try to connect persistently to squirrel
-    if (connectClient(clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
+    if (TcpClientRegistrar::connectClient(
+	        clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
       reconnect = false;
+  }
+
+  //Only connect to clientDaylight when we are successfull connected to server
+  //    delay connect attempts to 2 per second
+  static uint32_t lastTime = millis();
+  uint32_t currentTime = millis();
+  if (currentTime - lastTime > 500 && !reconnect && !clientDaylight.connected()) {
+    Serial.print("Attempt connect to daylight\n");
+    lastTime = currentTime;
+    
+    clientSquirrel.print("ip daylight\n");
+    IPAddress daylightIp;
+    if (daylightIp.fromString(clientSquirrel.readStringUntil('\n')) && daylightIp != 0) {
+      
+      //Persistent connect to daylight
+      TcpClientRegistrar::connectClient(clientDaylight, daylightIp, 23, "iocontrol", true);
+    }
   }
 }
 
-//Make static
-bool connectClient(WiFiClient& server, IPAddress ip, uint16_t port, const char* identity, bool persist) {
+void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
 
-  //Connect persistently with the controller
-  Serial.print("Reg\n");
-  server.connect(ip, port);
+  if (argc != 1) {
+    reply.print("ER\n");
+    return;
+  }
 
-  //Wait 5 seconds for TCP connect
-  for (int i = 10; !server.connected() && i > 0; i--) {
-    delay(500);
-  }
-  if (!server.connected()) {
-    server.stop();
-    return false;
-  }
-  Serial.print("Good\n");
-
-  server.setTimeout(5000);
-  String cmd = server.readStringUntil('\n');
-  if (!cmd.equals("mode")) {
-    server.stop();
-    return false;
-  }
-  else {
-    if (persist)
-      server.print("persist\n");
-    else
-      server.print("register\n");
-    
-    cmd = server.readStringUntil('\n');
-    if (!cmd.equals("identify")) {
-      server.stop();
-      return false;
-    }
-    else {
-      server.print(identity);
-      server.print("\n");
-    }
-  }
-  Serial.print("Authed\n");
+  if (argv[0][0] == '0')
+    outputMode = MODE_MANUAL_HUE;
+  else if (argv[0][0] == '1')
+    outputMode = MODE_MANUAL_TEMP;
+  else if (argv[0][0] == '2')
+    outputMode = MODE_HUE;
+  else if (argv[0][0] == '3')
+    outputMode = MODE_AUDIO;
+  else if (argv[0][0] == '4')
+    outputMode = MODE_TEMP;
   
-  if (persist)
-    return server.connected();
-  else {
-    server.stop();
-    return true;
+  reply.print("OK\n");
+}
+
+void commandSetTemp(Stream& reply, int argc, const char** argv) {
+
+  if (argc != 1) {
+    reply.print("ER\n");
+    return;
   }
+
+  if (argv[0][0] == 'a')
+    outputMode = MODE_TEMP;
+  else {
+    outputMode = MODE_MANUAL_TEMP;
+    temperature = (uint8_t)atoi(argv[0]);
+  }
+  
+  reply.print("OK\n");
+}
+
+void commandSetColor(Stream& reply, int argc, const char** argv) {
+
+  if (argc != 3) {
+    reply.print("ER\n");
+    return;
+  }
+
+  outputMode = MODE_MANUAL_HUE;
+  colorRed   = (uint8_t)atoi(argv[0]);
+  colorGreen = (uint8_t)atoi(argv[1]);
+  colorBlue  = (uint8_t)atoi(argv[2]);
+  
+  reply.print("OK\n");
 }
 
 /**
  * Overwrites the first two characters with the hex equivalent of the byte given.
  */
-void byteToString(uint8_t toConvert, char* writeStart) {
+void byteToString(uint8_t toConvert, char* writeStart) { 
   static char* charLookup = "0123456789ABCDEF";
   
   writeStart[1] = charLookup[ (toConvert       & 15)];
   writeStart[0] = charLookup[((toConvert >> 4) & 15)];
 }
 
-/*void sendBinaryColor(Stream& out, int8_t r, int8_t g, int8_t b, int8_t w) {
-  
-  // Create the mask by saving the first byte of rgbw in the mask
-  int8_t mask = 0;
-  if (w == 0)
-    w = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (b == 0)
-    b = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (g == 0)
-    g = 1;
-  else
-    mask |= 1;
-    
-  mask <<= 1;
-
-  if (r == 0)
-    r = 1;
-  else
-    mask |= 1;
-
-  mask |= 0x80;
-
-  // Send the color values
-  out.print("b ");
-  out.write(mask);
-  out.write(r);
-  out.write(g);
-  out.write(b);
-  out.write(w);
-  out.print("\n");
-*/
-  /*Serial.print("b ");
-  Serial.print(mask);
-  Serial.print(" ");
-  Serial.print(r);
-  Serial.print(" ");
-  Serial.print(g);
-  Serial.print(" ");
-  Serial.print(b);
-  Serial.print(" ");
-  Serial.print(w);
-  Serial.print("\n");*/
-/*}*/

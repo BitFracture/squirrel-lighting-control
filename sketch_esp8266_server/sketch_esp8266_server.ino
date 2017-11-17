@@ -19,6 +19,7 @@
 #include <WiFiClientSecure.h>
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
+#include <stdio.h>
 
 //Custom libraries
 #include <CommandInterpreter.h>
@@ -78,6 +79,8 @@ void setup() {
   serialCmd.assign("help", commandHelp);
   serialCmd.assign("test-args", commandTestArgs);
   serialCmd.assign("set-timeout", commandSetTimeout);
+  serialCmd.assign("color", commandSetColor);
+  serialCmd.assign("temp", commandSetTemp);
   
   //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -112,12 +115,12 @@ void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
   if (argc <= 0) {
-    port.print(WiFi.softAPIP());
-    port.print("\n");
+    String toPrint = WiFi.softAPIP().toString() + "\n";
+    port.print(toPrint);
   }
   else {
-    port.print(clients.findIp(argv[0]));
-    port.print("\n");
+    String toPrint = clients.findIp(argv[0]).toString() + "\n";
+    port.print(toPrint);
   }
 }
 
@@ -178,4 +181,48 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
   
   clients.setConnectionTimeout(timeout);
 }
+
+char cmdOutBuffer[15];
+void commandSetColor(Stream& port, int argc, const char** argv) {
+  if (argc != 3) {
+    
+    port.print("You must specify 3 space-delimited color channels 0 to 255\n");
+    return;
+  }
+
+  if (!clientIoControl || !clientIoControl->connected())
+  {
+    port.print("Waiting for IOControl connection, please try again later");
+    return;
+  }
+
+  sprintf(&cmdOutBuffer[0], "c %s %s %s\n", argv[0], argv[1], argv[2]);
+  clientIoControl->print(&cmdOutBuffer[0]);
+  port.print("OK\n");
+}
+
+void commandSetTemp(Stream& port, int argc, const char** argv) {
+  if (argc != 1) {
+    
+    port.print("You must specify 1 color channel 0 to 255\n");
+    return;
+  }
+
+  if (!clientIoControl || !clientIoControl->connected())
+  {
+    port.print("Waiting for IOControl connection, please try again later");
+    return;
+  }
+
+  if (strcmp("auto", argv[0]) == 0) {
+    sprintf(cmdOutBuffer, "t a\n");
+  } else {
+    sprintf(cmdOutBuffer, "t %s\n", argv[0]);
+  }
+
+  clientIoControl->print(&cmdOutBuffer[0]);
+  port.print("OK\n");
+}
+
+
 

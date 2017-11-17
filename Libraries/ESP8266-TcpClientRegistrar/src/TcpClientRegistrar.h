@@ -43,6 +43,10 @@ public:
   void disableInitialFlush();
   void setConnectionTimeout(int);
   int getConnectionTimeout();
+  
+  static bool connectClient(
+      WiFiClient&, IPAddress, uint16_t, const char*, bool = true);
+  static bool probeConnection(WiFiClient&, uint16_t = 0);
 };
 
 /**
