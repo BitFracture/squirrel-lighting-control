@@ -7,6 +7,7 @@
  * Date:     2017-10-14
  */
 
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiAP.h>
 #include <ESP8266WiFiGeneric.h>
@@ -19,22 +20,80 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 
+#include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
+#include <Pcf8591.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
+bool reconnect = true;
+ 
+WiFiEventHandler disconnectedEventHandler;
+TcpClientRegistrar registrar;
+CommandInterpreter ioCmd;
+WiFiClient* clientIoControl = NULL;
+WiFiServer listeningConnection(23);
+Pcf8591 ioChip(&Wire);
 
 void setup() {
+  Serial.begin(9600);
+  delay(500);
+  Serial.print("Initialized\n");
+  Wire.begin(2, 0);
 
-  Serial.print("DEBUG: Connecting to WiFi access point");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nDEBUG: WiFi is connected");
+  
+  disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
+  
+  ioCmd.assign("g", getTemperature);
+
+  listeningConnection.begin();
+  registrar.assign("iocontrol", &clientIoControl);
 }
 
 void loop() {
+  //Do nothing until we are connected to the server
+  handleReconnect();
+
+  // Client recv
+  registrar.handle(listeningConnection);
+
+  //Handle commands
+  ioCmd.handle(Serial);
+  if (clientIoControl != NULL && clientIoControl->connected())
+    ioCmd.handle(*clientIoControl);
 }
+
+void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
+
+  reconnect = true;
+}
+
+void handleReconnect() {
+  //TODO: Reconnect if server TCP connection lost
+  while (reconnect) {
+    //Wait for wifi for 5 seconds
+    Serial.print("Wait\n");
+    for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
+      delay(500);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      continue;
+    }
+    
+    //Try to connect persistently to squirrel
+    WiFiClient registerClient;
+    if (TcpClientRegistrar::connectClient(
+         registerClient, IPAddress(192, 168, 3, 1), 23, "daylight", false))
+      reconnect = false;
+  }
+}
+
+void getTemperature(Stream& reply, int argc, const char** argv) {
+  static const int BUFFER_LEN = 5;
+  static char buffer[BUFFER_LEN];
+  sprintf(buffer, "%i\n", ioChip.read(0, 0));
+  reply.print(buffer);
+}
+
