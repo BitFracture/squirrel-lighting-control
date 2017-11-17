@@ -69,11 +69,12 @@ Now, the common IP of *.1 can be used to fetch the IP of others by identity.
 ## User Instructions
 
 ```
-power [on | off]             Turn on system or force light(s) to off state
-brightness [auto | 0-255]    Motion/pressure derived or manual value
+power [auto | on | off]      Motion sensor based, forced on/off state
+brightness [auto | 0-255]    Pressure derived or manual value
 temperature [auto | 0-255]   Overrides color! By day sensor or manual value
-listen [on | off]            Audio-based brightness diffs on or off
+listen [react | power | off] Audio reactive brightness, power control, or none
 color 0-255 0-255 0-255      Overrides temp! Manual color value
+debug [on | off]
 calibrate ...                TBD calibration processes
 ```
 

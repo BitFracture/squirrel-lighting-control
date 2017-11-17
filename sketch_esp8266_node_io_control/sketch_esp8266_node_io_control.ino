@@ -112,6 +112,8 @@ void loop() {
     lastSampleTime = thisSampleTime;
     
     level = (uint8_t)(((int)level * 9 + ioChip.read(0, 0)) / 10);
+    Serial.print(",");
+    Serial.print(level);
   }
 
   //Send color data, rate limit to about 30FPS/PPS
