@@ -124,39 +124,34 @@ void loop() {
     lastSendTime = thisSendTime;
     
     //Construct command
-    char* toSend = "";
+    char toSend[32];
 
     if (outputMode == MODE_HUE) {
-      toSend = "s 00 00 00\n";
+      
       rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
       gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
       bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
       
-      byteToString(rLumen, toSend + 2);
-      byteToString(gLumen, toSend + 5);
-      byteToString(bLumen, toSend + 8);
+      sprintf(toSend, "c %i %i %i\n", rLumen, gLumen, bLumen);
     }
     else if (outputMode == MODE_AUDIO) {
-      toSend = "s 00 00 00 00\n";
-      byteToString(level, toSend + 11);
+      
+      sprintf(toSend, "c 0 0 0 %i 0\n", level);
     }
     else if (outputMode == MODE_MANUAL_HUE) {
-      toSend = "s 00 00 00\n";
-      byteToString(colorRed,   toSend + 2);
-      byteToString(colorGreen, toSend + 5);
-      byteToString(colorBlue,  toSend + 8);
+      
+      sprintf(toSend, "c %i %i %i\n", colorRed, colorGreen, colorBlue);
     }
     else if (outputMode == MODE_MANUAL_TEMP) {
-      toSend = "t 00\n";
-      byteToString(temperature, toSend + 2);
+      
+      sprintf(toSend, "t %i\n", temperature);
     }
     else if (outputMode == MODE_TEMP) {
-      toSend = "t 00\n";
       
       if (clientDaylight.connected()) {
         clientDaylight.print("g\n");
         uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
-        byteToString(sensorBrightness, toSend + 2);
+        sprintf(toSend, "t %i\n", sensorBrightness);
       }
     }
     
@@ -278,15 +273,5 @@ void commandSetColor(Stream& reply, int argc, const char** argv) {
   }
   
   reply.print("OK\n");
-}
-
-/**
- * Overwrites the first two characters with the hex equivalent of the byte given.
- */
-void byteToString(uint8_t toConvert, char* writeStart) { 
-  static char* charLookup = "0123456789ABCDEF";
-  
-  writeStart[1] = charLookup[ (toConvert       & 15)];
-  writeStart[0] = charLookup[((toConvert >> 4) & 15)];
 }
 
