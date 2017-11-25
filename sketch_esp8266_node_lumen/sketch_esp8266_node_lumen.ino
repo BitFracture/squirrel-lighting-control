@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-#define SONOFF_B1 0
-//#define THINKER_AILIGHT 1
+//#define SONOFF_B1 0
+#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -165,18 +165,20 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
 
   lastComTime = millis();
   
-  if (argc != 1) {
+  if (argc != 1 && argc != 2) {
     port.print("ER\n");
     return;
   }
 
   //The multiplier defines where we are from cool to warm
-  float multiplier = (float  )atoi(argv[0]) / 255.0f;
+  float multiplier = (float)atoi(argv[0]) / 255.0f;
+  float brightness = argc == 2 ? (float)atoi(argv[1]) / 255.0f : 1.0f;
 
   for (int i = 0; i < 5; i ++) {
-    colors[i] = (uint8_t)((float)warmColor[i] + 
+    float channelRaw = ((float)warmColor[i] + 
                 ((float)coolColor[i] - 
                 (float)warmColor[i]) * multiplier);
+    colors[i] = (uint8_t)(channelRaw * brightness);
   }
 
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
