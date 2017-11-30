@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-//#define SONOFF_B1 0
-#define THINKER_AILIGHT 1
+#define SONOFF_B1 0
+//#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -39,6 +39,7 @@ const int LED_CLCK_PIN = 15;
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 const IPAddress broadcastAddress(192, 168, 3, 255);
+const IPAddress serverAddress(   192, 168, 3, 1);
 
 //Our definition of "warm" varies from platform to platform... how to do this?
 #ifdef SONOFF_B1
@@ -67,6 +68,7 @@ uint8_t colors[5];
 WiFiEventHandler disconnectedEventHandler;
 
 void setup() {
+  WiFi.persistent(false);
   
   //Initial light data
   colors[0] = 0;
@@ -86,6 +88,7 @@ void setup() {
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("WiFi ready to connect\n");
 
   //Assign some commands to the command controllers
   serialCmd.assign("c", commandSetColors);
@@ -124,7 +127,15 @@ void loop() {
 }
 
 void handleReconnect() {
+  static int retryCount = 0;
+  
   while (reconnect) {
+    retryCount += 1;
+    if (retryCount > 5) {
+      WiFi.mode(WIFI_OFF);
+      delay(500);
+      ESP.reset();
+    }
 
     //Close the UDP data socket
     clientIoControl.stop();
@@ -132,6 +143,14 @@ void handleReconnect() {
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
     for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
+      //UDP Broadcast this reset debug terminal output
+      
+      broadcast.beginPacket(serverAddress, 23);
+      char packetData[64];
+      sprintf(packetData, "debug WAITING\n");
+      broadcast.print(&packetData[0]);
+      broadcast.endPacket();
+      
       delay(500);
     }
     if (WiFi.status() != WL_CONNECTED) {
@@ -143,17 +162,13 @@ void handleReconnect() {
     clientIoControl.begin(23);
     
     reconnect = false;
-
-    //Cycle colors to show connected
-    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
+    
+    //UDP Broadcast this reset debug terminal output
+    broadcast.beginPacket(serverAddress, 23);
+    char packetData[64];
+    sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
+    broadcast.print(&packetData[0]);
+    broadcast.endPacket();
   }
 }
 

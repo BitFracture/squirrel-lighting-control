@@ -46,10 +46,9 @@ uint8_t Pcf8591::read(uint8_t chipNumber, uint8_t inputNumber) {
 /**
  * Writes analog output to the only output pin on the given chip.
  */
-void Pcf8591::write(uint8_t chipNumber, uint8_t value) {
-  if (!outputEnabled)
-    return;
+void Pcf8591::write(uint8_t chipNumber, uint8_t value, bool outputEnable) {
 
+  this->outputEnabled = outputEnable;
   uint8_t thisAddress = getAddress(chipNumber);
   
   twoWireSource->beginTransmission(thisAddress);
@@ -63,8 +62,8 @@ void Pcf8591::write(uint8_t chipNumber, uint8_t value) {
 /**
  * If disabled, output is in hi-z state even when written to (default).
  */
-void Pcf8591::enableOutput(bool enabled) {
-  outputEnabled = enabled;
+bool Pcf8591::getOutputEnabled() {
+  return outputEnabled;
 }
 
 /**

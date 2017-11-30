@@ -24,6 +24,7 @@
 //Custom libraries
 #include <CommandInterpreter.h>
 #include <TcpClientRegistrar.h>
+#include <Pcf8591.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
@@ -37,27 +38,35 @@ const uint8_t MAX_AP_CLIENTS = 12;
 WiFiClient* clientMobile    = NULL;
 WiFiClient* clientLaptop    = NULL;
 WiFiClient* clientIoControl = NULL;
+WiFiUDP clientRemoteDebug;
 
 //Interpreters for user connections (clones, w/ separate buffers)
 CommandInterpreter serialCmd;
 CommandInterpreter mobileCmd;
 CommandInterpreter laptopCmd;
 CommandInterpreter ioCmd;
+CommandInterpreter remoteDebugCmd;
 
 //TCP server and the client id registrar: Handle reconnects seamlessly
 WiFiServer listenSocket(23);
 TcpClientRegistrar clients;
 
+//Output indicator only
+Pcf8591 ioChip(&Wire);
+
 void setup() {
   //Turn wi-fi off (fix for soft reset)
   WiFi.mode(WIFI_OFF);
   delay(1000);
+
+  //Write high output, enable
+  //Wire.begin(2, 0);
+  //ioChip.write(0, 255, true);
   
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
-  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
+  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS))
     Serial.print("Critical failure!\n");
-  }
   WiFi.mode(WIFI_AP);
   softAPSetMaxConnections(MAX_AP_CLIENTS);
   
@@ -67,6 +76,8 @@ void setup() {
 
   listenSocket.begin();
   Serial.print("DEBUG: Server is ready\n");
+
+  clientRemoteDebug.begin(23);
 
   //iocontrol commands
   ioCmd.assignDefault(commandNotFound);
@@ -86,6 +97,9 @@ void setup() {
   mobileCmd = CommandInterpreter(serialCmd);
   laptopCmd = CommandInterpreter(serialCmd);
 
+  //Allow remote nodes to send debug output through our serial on UDP
+  remoteDebugCmd.assign("debug", commandRemoteDebug);
+
   //Register client IDs to respective pointers for auto connection handling
   clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
@@ -93,16 +107,24 @@ void setup() {
 }
 
 void loop() {
+  static uint32_t aliveIndicateTime = 0;
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
   serialCmd.handle(Serial);
+  remoteDebugCmd.handle(clientRemoteDebug);
   if (clientMobile)
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
     mobileCmd.handle(*clientLaptop);
   if (clientIoControl)
     ioCmd.handle(*clientIoControl);
+
+  //Blink the LED on AOut by toggling from output to hi-z mode
+  /*if (millis() - aliveIndicateTime > 2000) {
+    aliveIndicateTime = millis();
+    ioChip.write(0, 255, !ioChip.getOutputEnabled());
+  }*/
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {
@@ -227,5 +249,17 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
   port.print("OK\n");
 }
 
+/**
+ * Takes remote data and outputs it to the command prompt at this node.
+ */
+void commandRemoteDebug(Stream& port, int argc, const char** argv) {
 
+  Serial.println("DEBUG: Remote node says...");
+  for (int ar = 0; ar < argc; ar++)
+  {
+    Serial.print("DEBUG: ");
+    Serial.print(argv[ar]);
+    Serial.print("\n");
+  }
+}
 

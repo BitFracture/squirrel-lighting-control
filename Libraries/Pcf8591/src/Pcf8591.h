@@ -24,7 +24,7 @@ private:
 public:
   Pcf8591(TwoWire*);
   uint8_t read(uint8_t, uint8_t);
-  void write(uint8_t, uint8_t);
-  void enableOutput(bool);
+  void write(uint8_t, uint8_t, bool = true);
+  bool getOutputEnabled();
 };
 
