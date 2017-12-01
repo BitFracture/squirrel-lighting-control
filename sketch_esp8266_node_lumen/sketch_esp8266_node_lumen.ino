@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-//#define SONOFF_B1 0
-#define THINKER_AILIGHT 1
+#define SONOFF_B1 0
+//#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -99,7 +99,6 @@ void setup() {
   //Assign some commands to the command controllers
   serialCmd.assign("c", commandSetColors);
   serialCmd.assign("t", commandSetTemp);
-  serialCmd.assignDefault(commandUnknown);
   ioCmd = CommandInterpreter(serialCmd);
 }
 
@@ -133,15 +132,8 @@ void loop() {
 }
 
 void handleReconnect() {
-  //static int retryCount = 0;
   
   while (reconnect) {
-    /*retryCount += 1;
-    if (retryCount > 5) {
-      WiFi.mode(WIFI_OFF);
-      delay(500);
-      ESP.reset();
-    }*/
 
     //Close the UDP data socket
     clientIoControl.stop();
@@ -170,6 +162,7 @@ void handleReconnect() {
 void sendDebug(char* buff) {
   
   bool replied = false;
+  broadcast.begin(DEBUG_PORT);
 
   while (!replied) {
     //Send out debug data
@@ -181,7 +174,6 @@ void sendDebug(char* buff) {
     int packetSize = 0;
     uint32_t timeout = 2000;
     uint32_t timeStart = millis();
-    broadcast.begin(DEBUG_PORT);
     while (((packetSize = broadcast.parsePacket()) <= 0) && (millis() - timeStart) < timeout) {
       delay(50);
     }
@@ -192,10 +184,8 @@ void sendDebug(char* buff) {
         replied = true;
     }
   }
-}
-
-void commandUnknown(Stream& port, int argc, const char** argv) {
-  port.print("ER\n");
+  
+  broadcast.stop();
 }
 
 void commandSetTemp(Stream& port, int argc, const char** argv) {
@@ -203,7 +193,6 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
   lastComTime = millis();
   
   if (argc != 1 && argc != 2) {
-    port.print("ER\n");
     return;
   }
 
@@ -226,7 +215,6 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   lastComTime = millis();
 
   if (argc < 3 || argc > 5) {
-    port.print("ER\n");
     return;
   }
 
@@ -237,8 +225,6 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
-
-  port.print("OK\n");
 }
 
 
