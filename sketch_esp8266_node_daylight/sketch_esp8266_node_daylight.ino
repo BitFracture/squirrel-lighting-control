@@ -35,6 +35,7 @@ WiFiClient* clientIoControl = NULL;
 WiFiServer listeningConnection(23);
 Pcf8591 ioChip(&Wire);
 
+
 void setup() {
   Serial.begin(9600);
   delay(500);
@@ -52,6 +53,7 @@ void setup() {
   registrar.assign("iocontrol", &clientIoControl);
 }
 
+
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
@@ -63,12 +65,30 @@ void loop() {
   ioCmd.handle(Serial);
   if (clientIoControl != NULL && clientIoControl->connected())
     ioCmd.handle(*clientIoControl);
+
+  handleHeartbeat();
 }
+
+
+/**
+ * Blinks the output LED at the given rate.
+ */
+void handleHeartbeat() {
+  static uint32_t aliveIndicateTime = 0;
+  
+  //Blink the LED on AOut by toggling from output to hi-z mode
+  if (millis() - aliveIndicateTime > 2000) {
+    aliveIndicateTime = millis();
+    ioChip.write(0, 255, !ioChip.getOutputEnabled());
+  }
+}
+
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
   reconnect = true;
 }
+
 
 void handleReconnect() {
   //TODO: Reconnect if server TCP connection lost
@@ -90,10 +110,12 @@ void handleReconnect() {
   }
 }
 
+
 void getTemperature(Stream& reply, int argc, const char** argv) {
   static const int BUFFER_LEN = 5;
   static char buffer[BUFFER_LEN];
   sprintf(buffer, "%i\n", ioChip.read(0, 0));
   reply.print(buffer);
 }
+
 
