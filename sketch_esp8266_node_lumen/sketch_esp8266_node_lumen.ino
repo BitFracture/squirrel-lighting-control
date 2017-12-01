@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-#define SONOFF_B1 0
-//#define THINKER_AILIGHT 1
+//#define SONOFF_B1 0
+#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -66,6 +66,10 @@ CommandInterpreter ioCmd;
 bool reconnect = true;
 bool colorCycle = false;
 uint8_t colors[5];
+
+//Use for UDP send and receive
+const int PACKET_DATA_SIZE = 64;
+char packetData[PACKET_DATA_SIZE];
 
 WiFiEventHandler disconnectedEventHandler;
 
@@ -158,11 +162,35 @@ void handleReconnect() {
     reconnect = false;
     
     //UDP Broadcast this reset debug terminal output
-    broadcast.beginPacket(serverAddress, DEBUG_PORT);
-    char packetData[64];
     sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
-    broadcast.print(&packetData[0]);
+    sendDebug(&packetData[0]);
+  }
+}
+
+void sendDebug(char* buff) {
+  
+  bool replied = false;
+
+  while (!replied) {
+    //Send out debug data
+    broadcast.beginPacket(serverAddress, DEBUG_PORT);
+    broadcast.print(buff);
     broadcast.endPacket();
+
+    //Get response from debug
+    int packetSize = 0;
+    uint32_t timeout = 2000;
+    uint32_t timeStart = millis();
+    broadcast.begin(DEBUG_PORT);
+    while (((packetSize = broadcast.parsePacket()) <= 0) && (millis() - timeStart) < timeout) {
+      delay(50);
+    }
+    if (packetSize > 0) {
+      int len = broadcast.read(&packetData[0], PACKET_DATA_SIZE);
+      packetData[len] = 0;
+      if (strcmp("OK\n", &packetData[0]) == 0)
+        replied = true;
+    }
   }
 }
 

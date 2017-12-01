@@ -114,7 +114,7 @@ void loop() {
   
   //Handle dispatching commands from various sources if they are available
   serialCmd.handle(Serial);
-  remoteDebugCmd.handle(clientRemoteDebug);
+  remoteDebugCmd.handleUdp(clientRemoteDebug);
   if (clientMobile)
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
@@ -256,12 +256,13 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
  */
 void commandRemoteDebug(Stream& port, int argc, const char** argv) {
 
-  Serial.println("DEBUG: Remote node says...");
   for (int ar = 0; ar < argc; ar++)
   {
-    Serial.print("DEBUG: ");
+    Serial.print("DEBUG (remote): ");
     Serial.print(argv[ar]);
     Serial.print("\n");
   }
+
+  port.print("OK\n");
 }
 

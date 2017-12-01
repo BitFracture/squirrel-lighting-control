@@ -190,7 +190,16 @@ void CommandInterpreter::handleUdp(WiFiUDP& port) {
 	}
   }
   
-  process(nullStream, bufferPointer);
+  stringStream.clear();
+  process(stringStream, bufferPointer);
+  
+  //If the user made any stream response, send that response in a packet
+  String response = stringStream.getString();
+  if (response.length() > 0) {
+	port.beginPacket(port.remoteIP(), port.remotePort());
+	port.print(response);
+	port.endPacket();
+  }
 }
 
 /**

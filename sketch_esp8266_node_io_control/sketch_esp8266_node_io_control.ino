@@ -173,7 +173,7 @@ void loop() {
           sprintf(toSend, "t %i\n", sensorBrightness);
         }
       }
-      elgse {
+      else {
         sprintf(toSend, "t %i\n", temperature);
       }
     }

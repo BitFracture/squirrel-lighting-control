@@ -23,7 +23,27 @@ private:
     void flush()     { return;    }
     int  peek()      { return -1; }
     int  read()      { return -1; }
-    size_t write(uint8_t u_Data){ return u_Data, 0x01; }
+    size_t write(uint8_t u_Data){ return 0x01; }
+  };
+  
+  //Special class to capture stream as String
+  class StringStream : public Stream {
+  public:
+    StringStream()   { return;    }
+    int  available() { return 0;  }
+    void flush()     { return;    }
+    int  peek()      { return -1; }
+    int  read()      { return -1; }
+    size_t write(uint8_t u_Data) {
+		
+		stringData = stringData + (char)u_Data;
+		return 0x01;
+	}
+	String getString() { return stringData; }
+	String clear() { stringData = String(""); }
+
+  private:
+	String stringData;
   };
   
   //Number of commands possible to be registered (preallocated)
@@ -36,6 +56,7 @@ private:
   const static int CMD_MAX_ARGS = 16;
   //A pre-constructed null stream to send to UDP requests
   NullStream nullStream;
+  StringStream stringStream;
 
   //Command receive buffer
   char cmdBuffer[CMD_BUFFER_SIZE + 1];
