@@ -58,26 +58,28 @@ void setup() {
   //Turn wi-fi off (fix for soft reset)
   WiFi.mode(WIFI_OFF);
   delay(1000);
+  
+  Serial.begin(9600);
+  delay(500);
 
   //Write high output, enable
-  //Wire.begin(2, 0);
-  //ioChip.write(0, 255, true);
+  Wire.begin(2, 0);
+  ioChip.write(0, 255, true);
   
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
-  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS))
+  if (!WiFi.softAP(WIFI_SSID, WIFI_PASS)) {
     Serial.print("Critical failure!\n");
+  }
   WiFi.mode(WIFI_AP);
   softAPSetMaxConnections(MAX_AP_CLIENTS);
-  
-  delay(500);
-  Serial.begin(9600);
-  Serial.print("DEBUG: WiFi AP is ready\n");
 
+  Serial.print("DEBUG: WiFi AP is ready\n");
+  
   listenSocket.begin();
   Serial.print("DEBUG: Server is ready\n");
 
-  clientRemoteDebug.begin(23);
+  clientRemoteDebug.begin(24);
 
   //iocontrol commands
   ioCmd.assignDefault(commandNotFound);
@@ -121,10 +123,10 @@ void loop() {
     ioCmd.handle(*clientIoControl);
 
   //Blink the LED on AOut by toggling from output to hi-z mode
-  /*if (millis() - aliveIndicateTime > 2000) {
+  if (millis() - aliveIndicateTime > 2000) {
     aliveIndicateTime = millis();
     ioChip.write(0, 255, !ioChip.getOutputEnabled());
-  }*/
+  }
 }
 
 void commandNotFound(Stream& port, int argc, const char** argv) {

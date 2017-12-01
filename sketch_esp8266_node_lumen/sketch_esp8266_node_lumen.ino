@@ -40,6 +40,8 @@ const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 const IPAddress broadcastAddress(192, 168, 3, 255);
 const IPAddress serverAddress(   192, 168, 3, 1);
+const int DEBUG_PORT = 24;
+const int DATA_PORT = 23;
 
 //Our definition of "warm" varies from platform to platform... how to do this?
 #ifdef SONOFF_B1
@@ -112,7 +114,7 @@ void loop() {
   if (millis() - lastComTime > 5000) {
     
     //UDP Broadcast ourself!
-    broadcast.beginPacket(broadcastAddress, 23);
+    broadcast.beginPacket(broadcastAddress, DATA_PORT);
     broadcast.print("d"); //d = discover
     broadcast.endPacket();
 
@@ -127,15 +129,15 @@ void loop() {
 }
 
 void handleReconnect() {
-  static int retryCount = 0;
+  //static int retryCount = 0;
   
   while (reconnect) {
-    retryCount += 1;
+    /*retryCount += 1;
     if (retryCount > 5) {
       WiFi.mode(WIFI_OFF);
       delay(500);
       ESP.reset();
-    }
+    }*/
 
     //Close the UDP data socket
     clientIoControl.stop();
@@ -143,14 +145,6 @@ void handleReconnect() {
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
     for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
-      //UDP Broadcast this reset debug terminal output
-      
-      broadcast.beginPacket(serverAddress, 23);
-      char packetData[64];
-      sprintf(packetData, "debug WAITING\n");
-      broadcast.print(&packetData[0]);
-      broadcast.endPacket();
-      
       delay(500);
     }
     if (WiFi.status() != WL_CONNECTED) {
@@ -159,12 +153,12 @@ void handleReconnect() {
     Serial.print("Connected\n");
 
     //Open udp port for lumen data
-    clientIoControl.begin(23);
+    clientIoControl.begin(DATA_PORT);
     
     reconnect = false;
     
     //UDP Broadcast this reset debug terminal output
-    broadcast.beginPacket(serverAddress, 23);
+    broadcast.beginPacket(serverAddress, DEBUG_PORT);
     char packetData[64];
     sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
     broadcast.print(&packetData[0]);
