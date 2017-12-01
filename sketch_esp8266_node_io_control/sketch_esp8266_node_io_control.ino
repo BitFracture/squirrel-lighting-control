@@ -19,6 +19,7 @@
 #include <WiFiClientSecure.h>
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
+#include <ESP8266Ping.h>
 
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
@@ -44,6 +45,11 @@ const int MODE_OFF    = 3; //Lights set off
 const int MODE_SLEEP  = 4; //Light off, may be woken by motion
 const int MODE_YIELD  = 5; //Transmission to bulbs is disbled
 
+//IO chip definitions
+const int PCF_PIN_AUDIO = 0;
+const int PCF_PIN_MOTION = 1;
+const int PCF_CHIP_SELECT = 0;
+
 int outputMode = MODE_TEMP;
 int sleepingMode = MODE_TEMP;
 
@@ -68,6 +74,10 @@ IPAddress lumenNodes[MAX_LUMEN_NODES];
 
 WiFiEventHandler disconnectedEventHandler;
 
+
+/**
+ * Configured wifi, sets up command interpreters.
+ */
 void setup() {
   Serial.begin(9600);
   delay(500);
@@ -87,6 +97,10 @@ void setup() {
   //squirrelCmd.assign("cl", commandSetClap);
 }
 
+
+/**
+ * Program main loop
+ */
 void loop() {
   static uint8_t rLumen, gLumen, bLumen;
   static uint32_t lastSendTime, thisSendTime, lastSampleTime, thisSampleTime;
@@ -129,7 +143,7 @@ void loop() {
   if (thisSampleTime - lastSampleTime > 5) {
     lastSampleTime = thisSampleTime;
     
-    level = (uint8_t)(((int)level * 9 + ioChip.read(0, 0)) / 10);
+    level = (uint8_t)(((int)level * 9 + ioChip.read(PCF_CHIP_SELECT, PCF_PIN_AUDIO)) / 10);
     //Serial.print(",");
     //Serial.print(level);
   }
@@ -169,13 +183,15 @@ void loop() {
       if (tempAuto) {
         if (clientDaylight.connected()) {
           clientDaylight.print("g\n");
-          uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
-          sprintf(toSend, "t %i\n", sensorBrightness);
+          String response = clientDaylight.readStringUntil('\n');
+          if (response.length() > 0)
+            temperature = (uint8_t)response.toInt();
+          else
+            clientDaylight.stop();
         }
       }
-      else {
-        sprintf(toSend, "t %i\n", temperature);
-      }
+      
+      sprintf(toSend, "t %i\n", temperature);
     }
 
     //Bulb is off, output black
@@ -192,13 +208,40 @@ void loop() {
       }
     }
   }
+
+  handleHeartbeat();
 }
 
+
+/**
+ * Blinks the output LED at the given rate.
+ */
+void handleHeartbeat() {
+  static uint32_t aliveIndicateTime = 0;
+  
+  //Blink the LED on AOut by toggling from output to hi-z mode
+  if (millis() - aliveIndicateTime > 2000) {
+    aliveIndicateTime = millis();
+    ioChip.write(0, 255, !ioChip.getOutputEnabled());
+  }
+}
+
+
+/**
+ * Interrupt called when wireless drops.
+ */
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
   reconnect = true;
 }
 
+
+/**
+ * Takes care of tearing down any open connections when wireless is lost. Then the process is as follows:
+ * 1. Connect to wifi
+ * 2. Register with server
+ * 3. Open any other dependent connections
+ */
 void handleReconnect() {
 
   //Reconnect if server TCP connection lost
@@ -230,24 +273,37 @@ void handleReconnect() {
       reconnect = false;
   }
 
-  //Only connect to clientDaylight when we are successfull connected to server
+  //Only connect to clientDaylight when we are successfully connected to server
   //    delay connect attempts to 2 per second
   static uint32_t lastTime = millis();
   uint32_t currentTime = millis();
-  if (currentTime - lastTime > 500 && !reconnect && !clientDaylight.connected()) {
-    Serial.print("Attempt connect to daylight\n");
+  if (currentTime - lastTime > 3000 && !reconnect && !clientDaylight.connected()) {
+    Serial.print("DEBUG: Attempting connect to daylight...");
     lastTime = currentTime;
     
     clientSquirrel.print("ip daylight\n");
     IPAddress daylightIp;
     if (daylightIp.fromString(clientSquirrel.readStringUntil('\n')) && daylightIp != 0) {
+      Serial.print(" got IP...");
       
-      //Persistent connect to daylight
-      TcpClientRegistrar::connectClient(clientDaylight, daylightIp, 23, "iocontrol", true);
+      //Persistent connect to daylight if we can ping
+      if (Ping.ping(daylightIp, 1)) {
+        Serial.print(" ping success\n");
+        TcpClientRegistrar::connectClient(clientDaylight, daylightIp, 23, "iocontrol", true);
+      } else {
+        Serial.print(" ping failed\n");
+      }
+    } else {
+      
+      Serial.print(" IP not found\n");
     }
   }
 }
 
+
+/**
+ * Changes the mode used to calculate data sent to the bulbs.
+ */
 void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
 
   if (argc != 1) {
@@ -267,6 +323,10 @@ void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
   reply.print("OK\n");
 }
 
+
+/**
+ * Changes the saved color temperature that will be sent to the bulbs when the temperature mode is used.
+ */
 void commandSetTemp(Stream& reply, int argc, const char** argv) {
 
   if (argc != 1) {
@@ -284,6 +344,10 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
   reply.print("OK\n");
 }
 
+
+/**
+ * Changes the saved color channels that will be sent to the bulbs when the color mode is used.
+ */
 void commandSetColor(Stream& reply, int argc, const char** argv) {
   
   if (argc == 1 && argv[0][0] == 'a') {
@@ -302,4 +366,5 @@ void commandSetColor(Stream& reply, int argc, const char** argv) {
   
   reply.print("OK\n");
 }
+
 

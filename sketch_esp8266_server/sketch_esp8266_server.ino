@@ -62,9 +62,8 @@ void setup() {
   Serial.begin(9600);
   delay(500);
 
-  //Write high output, enable
+  //Turn on wire library
   Wire.begin(2, 0);
-  ioChip.write(0, 255, true);
   
   //Get wi-fi connected
   WiFi.softAPConfig(localIp, gateway, subnet);
@@ -109,7 +108,6 @@ void setup() {
 }
 
 void loop() {
-  static uint32_t aliveIndicateTime = 0;
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
@@ -122,6 +120,15 @@ void loop() {
   if (clientIoControl)
     ioCmd.handle(*clientIoControl);
 
+  handleHeartbeat();
+}
+
+/**
+ * Blinks the output LED at the given rate
+ */
+void handleHeartbeat() {
+  static uint32_t aliveIndicateTime = 0;
+  
   //Blink the LED on AOut by toggling from output to hi-z mode
   if (millis() - aliveIndicateTime > 2000) {
     aliveIndicateTime = millis();
