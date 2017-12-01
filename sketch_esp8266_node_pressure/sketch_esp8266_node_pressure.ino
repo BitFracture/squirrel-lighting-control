@@ -53,9 +53,8 @@ void setup() {
 }
 
 void loop() {
-  //*
   //Do nothing until we are connected to the server
-  //handleReconnect(); //-------------------------------------*********
+  handleReconnect();
 
   // Client recv
   registrar.handle(listeningConnection);
@@ -65,27 +64,20 @@ void loop() {
   if (clientIoControl != NULL && clientIoControl->connected())
     ioCmd.handle(*clientIoControl);
   
+  handleHeartbeat();
+}
+
+/**
+ * Blinks the output LED at the given rate.
+ */
+void handleHeartbeat() {
+  static uint32_t aliveIndicateTime = 0;
   
-  Serial.println(ioChip.read(0, 0));
-  //**/
-
-  /*
-    //Capture audio level from chip
-    static uint8_t level = 0;
-    static uint32_t thisSampleTime, lastSampleTime = 0;
-    thisSampleTime = millis();
-    if (thisSampleTime - lastSampleTime > 5) {
-      lastSampleTime = thisSampleTime;
-
-
-      Serial.print(ioChip.read(0, 0));
-      Serial.print(" ");
-
-      Serial.print("*");
-      Serial.print(ioChip.read(0, 2));
-      Serial.print(" ");
-    }
-    //**/
+  //Blink the LED on AOut by toggling from output to hi-z mode
+  if (millis() - aliveIndicateTime > 2000) {
+    aliveIndicateTime = millis();
+    ioChip.write(0, 255, !ioChip.getOutputEnabled());
+  }
 }
 
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
