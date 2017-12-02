@@ -28,6 +28,7 @@
 Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
 WiFiClient clientDaylight;
+WiFiClient clientPressure;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
 
@@ -254,6 +255,7 @@ void handleReconnect() {
     clientSquirrel.stop();
     clientDiscover.stop();
     clientDaylight.stop();
+    clientPressure.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");

@@ -162,7 +162,7 @@ void handleReconnect() {
 void sendDebug(char* buff) {
   
   bool replied = false;
-  broadcast.begin(DEBUG_PORT);
+  //broadcast.begin(DEBUG_PORT);
 
   while (!replied) {
     //Send out debug data
@@ -185,7 +185,7 @@ void sendDebug(char* buff) {
     }
   }
   
-  broadcast.stop();
+  //broadcast.stop();
 }
 
 void commandSetTemp(Stream& port, int argc, const char** argv) {
