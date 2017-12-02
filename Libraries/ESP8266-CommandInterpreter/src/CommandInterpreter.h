@@ -71,7 +71,7 @@ private:
 		//Send echo now?
 		if (data == (uint8_t)'\n') {
 			if (sequenceNumbersEnabled)
-				sourceStream->printf("[%i] %s", *receiveCount, stringReceiveData.c_str()); //TODO: real receive counter
+				sourceStream->printf("[<-- %04d] %s", *receiveCount, stringReceiveData.c_str());
 			else
 				sourceStream->print(stringReceiveData);
 			stringReceiveData = "";
@@ -87,7 +87,7 @@ private:
 		//Send buffer now?
 		if (u_Data == (uint8_t)'\n') {
 			if (sequenceNumbersEnabled)
-				sourceStream->printf("[%i] %s", *sendCount, stringData.c_str());
+				sourceStream->printf("[--> %04d] %s", *sendCount, stringData.c_str());
 			else
 				sourceStream->print(stringData);
 			stringData = "";

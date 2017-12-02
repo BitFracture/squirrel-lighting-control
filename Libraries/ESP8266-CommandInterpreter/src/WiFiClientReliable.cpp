@@ -29,7 +29,7 @@ size_t WiFiClientReliable::write(uint8_t u_Data) {
 }
  
 void WiFiClientReliable::clear() {
-	stringData = String("");
+	stringData = String();
 }
 
 int WiFiClientReliable::getSendCount() {

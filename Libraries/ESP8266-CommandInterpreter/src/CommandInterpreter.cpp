@@ -159,7 +159,7 @@ void CommandInterpreter::handle(Stream& port) {
 	//Echo the command, if enabled
 	if (echoEnabled) {
 		if (sequenceNumbersEnabled)
-			port.printf("[%i] %s\n", receiveCount, entryPointer);
+			port.printf("[<-- %04d] %s\n", receiveCount, entryPointer);
 		else
 			port.printf("%s\n", entryPointer);
 	}
