@@ -164,15 +164,9 @@ void CommandInterpreter::handle(Stream& port) {
 	
 	//Invoke the argument parser and function handler
 	receiveCount++;
-	stringStream.clear();
-    process(stringStream, entryPointer);
-	
-	//If the user made any stream response, send that response
-    String response = stringStream.getString();
-    if (response.length() > 0) {
-	  port.print(response);
-	  sendCount++;
-	}
+	CommandBufferStream wrapper(port);
+    process(wrapper, entryPointer);
+	sendCount += wrapper.getSendCount();
   }
 }
 

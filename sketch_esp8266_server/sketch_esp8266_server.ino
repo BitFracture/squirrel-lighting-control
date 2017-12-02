@@ -93,6 +93,7 @@ void setup() {
   serialCmd.assign("set-timeout", commandSetTimeout);
   serialCmd.assign("color", commandSetColor);
   serialCmd.assign("temp", commandSetTemp);
+  serialCmd.assign("test", commandTest);
   
   //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -272,4 +273,15 @@ void commandRemoteDebug(Stream& port, int argc, const char** argv) {
 
   port.print("OK\n");
 }
+
+void commandTest(Stream& port, int argc, const char** argv) {
+
+  port.print("this-is");
+  port.print("-goat\n");
+  port.setTimeout(2000);
+  String response = port.readStringUntil('\n');
+  port.printf("received %s\n", response.c_str());
+}
+
+
 

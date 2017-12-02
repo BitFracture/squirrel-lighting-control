@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-#define SONOFF_B1 0
-//#define THINKER_AILIGHT 1
+//#define SONOFF_B1 0
+#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -162,7 +162,6 @@ void handleReconnect() {
 void sendDebug(char* buff) {
   
   bool replied = false;
-  //broadcast.begin(DEBUG_PORT);
 
   while (!replied) {
     //Send out debug data
@@ -171,8 +170,9 @@ void sendDebug(char* buff) {
     broadcast.endPacket();
 
     //Get response from debug
+    broadcast.begin(broadcast.localPort());
     int packetSize = 0;
-    uint32_t timeout = 2000;
+    uint32_t timeout = 2000; 
     uint32_t timeStart = millis();
     while (((packetSize = broadcast.parsePacket()) <= 0) && (millis() - timeStart) < timeout) {
       delay(50);
@@ -183,6 +183,7 @@ void sendDebug(char* buff) {
       if (strcmp("OK\n", &packetData[0]) == 0)
         replied = true;
     }
+    broadcast.stop();
   }
   
   //broadcast.stop();

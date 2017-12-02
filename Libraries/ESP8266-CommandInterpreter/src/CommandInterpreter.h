@@ -46,6 +46,39 @@ private:
 	String stringData;
   };
   
+  //Special class to buffer commands before sending them to another stream
+  //    A new line character is used to send. Each send is counted. 
+  class CommandBufferStream : public Stream {
+  public:
+    CommandBufferStream(Stream& sourceStream) { this->sourceStream = &sourceStream; }
+    int  available() { return sourceStream->available(); }
+    void flush()     { sourceStream->flush(); }
+    int  peek()      { return sourceStream->peek(); }
+    int  read()      { return sourceStream->read(); }
+    size_t write(uint8_t u_Data) {
+		
+		stringData = stringData + (char)u_Data;
+		
+		//Send buffer now?
+		if (u_Data == (uint8_t)'\n') {
+			sourceStream->print(stringData);
+			Serial.printf("SENT PACKET: \"%s\"\n", stringData.c_str()); //TODO delete this
+			clear();
+			sendCount++;
+		}
+		
+		return 0x01;
+	}
+	String getString() { return stringData; }
+	String clear() { stringData = String(""); }
+	int getSendCount() { return this->sendCount; };
+
+  private:
+	String stringData;
+	Stream* sourceStream = NULL;
+	int sendCount = 0;
+  };
+  
   //Number of commands possible to be registered (preallocated)
   const static int CMD_MAX_COUNT = 32;
   //Number of chars per command
