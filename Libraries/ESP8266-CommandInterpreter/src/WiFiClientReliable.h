@@ -17,16 +17,23 @@ public:
 	WiFiClientReliable();
     WiFiClientReliable(const WiFiClient&);
 	
-	size_t write(uint8_t);
+	virtual int read();
+	virtual size_t write(uint8_t);
+	void setTimeout(unsigned long timeout);
+	void setAckTimeout(unsigned long ackTimeout);
 	
 	int getSendCount();
+	int getReceiveCount();
 
 private:
-	void clear();
-	
 	String stringData;
 	Stream* sourceStream = NULL;
 	int sendCount = 0;
+	int receiveCount = 0;
+	bool _ackEnable = true; //NOT user configurable
+	bool _ackWaitEnable = true; //NOT user configurable
+	int ackTimeout = 5000;
+	int userTimeout = 1000;
 };
 
 #endif
