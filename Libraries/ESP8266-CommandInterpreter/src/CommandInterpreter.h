@@ -50,33 +50,65 @@ private:
   //    A new line character is used to send. Each send is counted. 
   class CommandBufferStream : public Stream {
   public:
-    CommandBufferStream(Stream& sourceStream) { this->sourceStream = &sourceStream; }
+    CommandBufferStream(Stream& sourceStream, int* sendCounter = 0, int* receiveCounter = 0) {
+		this->sourceStream = &sourceStream;
+		stringReceiveData = String();
+		stringData = String();
+		sendCount = sendCounter != 0 ? sendCounter : &internalSendCounter;
+		receiveCount = receiveCounter != 0 ? receiveCounter : &internalReceiveCounter;
+	}
     int  available() { return sourceStream->available(); }
     void flush()     { sourceStream->flush(); }
-    int  peek()      { return sourceStream->peek(); }
-    int  read()      { return sourceStream->read(); }
+    int peek()      { return sourceStream->peek(); }
+	
+    int read() {
+		int realData = sourceStream->read();
+		if (realData <= 0) return realData;
+		
+		uint8_t data = (uint8_t)(char)realData;
+		stringReceiveData += (char)data;
+		
+		//Send echo now?
+		if (data == (uint8_t)'\n') {
+			if (sequenceNumbersEnabled)
+				sourceStream->printf("[%i] %s", *receiveCount, stringReceiveData.c_str()); //TODO: real receive counter
+			else
+				sourceStream->print(stringReceiveData);
+			stringReceiveData = "";
+			(*receiveCount)++;
+		}
+		
+		return realData;
+	}
     size_t write(uint8_t u_Data) {
 		
 		stringData = stringData + (char)u_Data;
 		
 		//Send buffer now?
 		if (u_Data == (uint8_t)'\n') {
-			sourceStream->print(stringData);
-			Serial.printf("SENT PACKET: \"%s\"\n", stringData.c_str()); //TODO delete this
-			clear();
-			sendCount++;
+			if (sequenceNumbersEnabled)
+				sourceStream->printf("[%i] %s", *sendCount, stringData.c_str());
+			else
+				sourceStream->print(stringData);
+			stringData = "";
+			(*sendCount)++;
 		}
 		
 		return 0x01;
 	}
 	String getString() { return stringData; }
-	String clear() { stringData = String(""); }
-	int getSendCount() { return this->sendCount; };
+	String getReceiveString() { return stringReceiveData; }
+	void enableSequenceNumbers(bool enable) { this->sequenceNumbersEnabled = enable; }
 
   private:
+	String stringReceiveData;
 	String stringData;
-	Stream* sourceStream = NULL;
-	int sendCount = 0;
+	Stream* sourceStream;
+	int internalReceiveCounter;
+	int internalSendCounter;
+	int* sendCount;
+	int* receiveCount;
+	bool sequenceNumbersEnabled = false;
   };
   
   //Number of commands possible to be registered (preallocated)
@@ -112,6 +144,7 @@ private:
   void execute(Stream&, char*, char*);
   void process(Stream&, char*);
   bool echoEnabled = false;
+  bool sequenceNumbersEnabled = false;
   
 public:
   CommandInterpreter();
@@ -122,6 +155,7 @@ public:
   void handle(Stream&);
   void handleUdp(WiFiUDP&);
   void enableEcho(bool);
+  void enableSequenceNumbers(bool);
   
   int getSendCount();
   int getReceiveCount();

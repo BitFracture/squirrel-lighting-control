@@ -158,15 +158,17 @@ void CommandInterpreter::handle(Stream& port) {
   if (entryPointer != NULL) {
 	//Echo the command, if enabled
 	if (echoEnabled) {
-		port.print(entryPointer);
-		port.print("\n");
+		if (sequenceNumbersEnabled)
+			port.printf("[%i] %s\n", receiveCount, entryPointer);
+		else
+			port.printf("%s\n", entryPointer);
 	}
+	receiveCount++;
 	
 	//Invoke the argument parser and function handler
-	receiveCount++;
-	CommandBufferStream wrapper(port);
+	CommandBufferStream wrapper(port, &sendCount, &receiveCount);
+	wrapper.enableSequenceNumbers(sequenceNumbersEnabled);
     process(wrapper, entryPointer);
-	sendCount += wrapper.getSendCount();
   }
 }
 
@@ -261,4 +263,8 @@ int CommandInterpreter::getReceiveCount() {
 
 void CommandInterpreter::enableEcho(bool echoEnabled) {
 	this->echoEnabled = echoEnabled;
+}
+
+void CommandInterpreter::enableSequenceNumbers(bool enabled) {
+	this->sequenceNumbersEnabled = enabled;
 }

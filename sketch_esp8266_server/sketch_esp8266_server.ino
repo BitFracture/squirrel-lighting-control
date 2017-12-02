@@ -99,6 +99,9 @@ void setup() {
   mobileCmd = CommandInterpreter(serialCmd);
   laptopCmd = CommandInterpreter(serialCmd);
 
+  serialCmd.enableEcho(true);
+  serialCmd.enableSequenceNumbers(true);
+
   //Allow remote nodes to send debug output through our serial on UDP
   remoteDebugCmd.assign("debug", commandRemoteDebug);
 
