@@ -156,7 +156,23 @@ void CommandInterpreter::handle(Stream& port) {
   }
 
   if (entryPointer != NULL) {
-    process(port, entryPointer);
+	//Echo the command, if enabled
+	if (echoEnabled) {
+		port.print(entryPointer);
+		port.print("\n");
+	}
+	
+	//Invoke the argument parser and function handler
+	receiveCount++;
+	stringStream.clear();
+    process(stringStream, entryPointer);
+	
+	//If the user made any stream response, send that response
+    String response = stringStream.getString();
+    if (response.length() > 0) {
+	  port.print(response);
+	  sendCount++;
+	}
   }
 }
 
@@ -190,6 +206,16 @@ void CommandInterpreter::handleUdp(WiFiUDP& port) {
 	}
   }
   
+  //Echo the command, if enabled
+  if (echoEnabled) {
+	port.beginPacket(port.remoteIP(), port.remotePort());
+    port.print(bufferPointer);
+    port.print("\n");
+	port.endPacket();
+  }
+  
+  //Parse args, call the handler
+  receiveCount++;
   stringStream.clear();
   process(stringStream, bufferPointer);
   
@@ -199,6 +225,7 @@ void CommandInterpreter::handleUdp(WiFiUDP& port) {
 	port.beginPacket(port.remoteIP(), port.remotePort());
 	port.print(response);
 	port.endPacket();
+	sendCount++;
   }
 }
 
@@ -230,3 +257,14 @@ void CommandInterpreter::setPrefix(char newPrefix) {
   prefix = newPrefix;
 }
  
+int CommandInterpreter::getSendCount() {
+	return this->sendCount;
+}
+
+int CommandInterpreter::getReceiveCount() {
+	return this->receiveCount;
+}
+
+void CommandInterpreter::enableEcho(bool echoEnabled) {
+	this->echoEnabled = echoEnabled;
+}

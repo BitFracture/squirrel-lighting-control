@@ -72,8 +72,13 @@ private:
   //Command prefix character
   char prefix = '\0';
   
+  //Store command counters
+  int receiveCount = 0;
+  int sendCount = 0;
+  
   void execute(Stream&, char*, char*);
   void process(Stream&, char*);
+  bool echoEnabled = false;
   
 public:
   CommandInterpreter();
@@ -83,4 +88,8 @@ public:
   void setPrefix(char);
   void handle(Stream&);
   void handleUdp(WiFiUDP&);
+  void enableEcho(bool);
+  
+  int getSendCount();
+  int getReceiveCount();
 };
