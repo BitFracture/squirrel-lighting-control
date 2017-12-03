@@ -46,14 +46,13 @@ AverageTracker<uint8_t> avg(14);
 void loop() {
 //*
   //Capture audio level from chip
-  static uint8_t level = 0, lastLevel = 0, lastMaxLevel = 0;
-  static uint32_t thisSampleTime, lastSampleTime = 0;
+  static uint8_t audioLevel = 0, lastLevel = 0, lastMaxLevel = 0;
   static unsigned long lastClapThreshHoldTime = 0;
 
-  level = ioChip.read(0, 0);
-  avg.add(level);
+  audioLevel = ioChip.read(0, 0);
+  avg.add(audioLevel);
   
-  if (level <= lastLevel) {
+  if (audioLevel <= lastLevel) {
     if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
       if (millis() - lastClapThreshHoldTime < 500) {
         Serial.println("Peak Detected ----------------------");
@@ -71,16 +70,16 @@ void loop() {
     
     lastMaxLevel = 0;
   } else {
-    lastMaxLevel = level;
+    lastMaxLevel = audioLevel;
   }
 
-  lastLevel = level;
+  lastLevel = audioLevel;
 
   for (int i = avg.average(); i > 0; i--)
     Serial.print("*");
 
   Serial.print("[");
-  Serial.print(level);
+  Serial.print(audioLevel);
   Serial.println("]");
   
   //**/

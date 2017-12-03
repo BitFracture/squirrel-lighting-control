@@ -24,6 +24,7 @@
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
 #include <Pcf8591.h>
+#include "AverageTracker.h"
 
 Pcf8591 ioChip(&Wire);
 WiFiClient clientSquirrel;
@@ -43,8 +44,7 @@ const int MODE_TEMP   = 0; //Temperature mode
 const int MODE_COLOR  = 1; //Color mode
 const int MODE_LISTEN = 2; //Audio listen mode
 const int MODE_OFF    = 3; //Lights set off
-const int MODE_SLEEP  = 4; //Light off, may be woken by motion
-const int MODE_YIELD  = 5; //Transmission to bulbs is disbled
+const int MODE_YIELD  = 4; //Transmission to bulbs is disbled
 
 //IO chip definitions
 const int PCF_PIN_AUDIO = 0;
@@ -52,7 +52,6 @@ const int PCF_PIN_MOTION = 1;
 const int PCF_CHIP_SELECT = 0;
 
 int outputMode = MODE_TEMP;
-int sleepingMode = MODE_TEMP;
 
 //Channel values
 uint8_t colorRed = 0;
@@ -62,10 +61,19 @@ uint8_t temperature = 0;
 uint8_t brightness = 0;
 
 //Mode metadata
-bool clapEnabled  = false; //Can clap trigger power state?
+bool pressureAuto = true; //Dim lights when the user is on sensor.
+uint8_t pressureDimValue = 0;
+
 int motionTimeout = 30;    //30 seconds to power off
+bool motionEnabled  = false; //Can clap trigger power state?
+bool clapEnabled  = false; //Can clap trigger power state?
 bool colorAuto    = false; //Is color mode set to auto hue cycle?
 bool tempAuto     = false; //Is temperature coming from light sensor?
+
+const int CLAP_THRESHHOLD = 10;
+
+//States which the on/off state can be asked to changed to.
+enum PowerChangeState {POWER_ON, POWER_OFF, POWER_TOGGLE};
 
 CommandInterpreter squirrelCmd;
 
@@ -74,7 +82,6 @@ const int MAX_LUMEN_NODES = 16;
 IPAddress lumenNodes[MAX_LUMEN_NODES];
 
 WiFiEventHandler disconnectedEventHandler;
-
 
 /**
  * Configured wifi, sets up command interpreters.
@@ -91,11 +98,12 @@ void setup() {
 
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
-  squirrelCmd.assign("m", commandSetOutputMode);
-  squirrelCmd.assign("c", commandSetColor);
-  squirrelCmd.assign("t", commandSetTemp);
-  //squirrelCmd.assign("b", commandSetBrightness);
-  //squirrelCmd.assign("cl", commandSetClap);
+  squirrelCmd.assign("color", onCommandSetColor);
+  squirrelCmd.assign("temp", onCommandSetTemp);
+  squirrelCmd.assign("brightness", onCommandSetBrightness);
+  // squirrelCmd.assign("clap", onCommandSetTemp);
+  // squirrelCmd.assign("power", onCommandSetTemp);
+  // squirrelCmd.assign("listen", onCommandSetTemp);
 }
 
 
@@ -138,18 +146,55 @@ void loop() {
     }
   }
 
-  //Capture audio level from chip
-  static uint8_t level = 0;
+  // Collect data from inputs
+  
+  //    Audio Data Variables
+  static uint8_t audioLevel = 0, lastLevel = 0, lastMaxLevel = 0;
+  static unsigned long lastClapThreshHoldTime = 0;
+  static AverageTracker<uint8_t> avg(14);
+  
+  //    Pressure sensor values
+  static uint8_t pressureLevel = 255; // No pressure
+  
   thisSampleTime = millis();
   if (thisSampleTime - lastSampleTime > 5) {
-    lastSampleTime = thisSampleTime;
     
-    level = (uint8_t)(((int)level * 9 + ioChip.read(PCF_CHIP_SELECT, PCF_PIN_AUDIO)) / 10);
-    //Serial.print(",");
-    //Serial.print(level);
+    // Capture audio level from chip
+    if (MODE_LISTEN || clapEnabled) {
+      // Record current audio value
+      audioLevel = ioChip.read(0, 0);
+      avg.add(audioLevel);
+      
+      // Figure out if a clap has happened
+      if (clapEnabled) {
+        if (audioLevel <= lastLevel) {
+          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+            if (millis() - lastClapThreshHoldTime < 500) {
+              OnDoubleClap();
+              lastClapThreshHoldTime = 0;
+            } else {
+              lastClapThreshHoldTime = millis();
+            }
+            lastMaxLevel = -1;
+          }
+          lastMaxLevel = 0;
+        } else {
+          lastMaxLevel = audioLevel;
+        }
+      }
+      
+      // Update old audio value
+      lastLevel = audioLevel;
+    }
+    
+    // Collect pressure sensor data
+    if (clientDaylight.connected()) {
+      clientDaylight.print("g");
+      pressureLevel = (uint8_t) clientDaylight.readStringUntil('\n').toInt();
+    }
   }
 
-  //Limit the rate of data transmission
+  // Changes outputs in a given time span
   thisSendTime = millis();
   if (thisSendTime - lastSendTime > 32) {
     lastSendTime = thisSendTime;
@@ -159,7 +204,6 @@ void loop() {
 
     //Output colors
     if (outputMode == MODE_COLOR) {
-
       if (colorAuto) {
         rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
         gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
@@ -174,13 +218,11 @@ void loop() {
 
     //Output audio reaction
     else if (outputMode == MODE_LISTEN) {
-      
-      sprintf(toSend, "c 0 0 0 %i 0\n", level);
+      sprintf(toSend, "c 0 0 0 %i 0\n", 0xff & (50 * audioLevel));
     }
 
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
-
       if (tempAuto) {
         if (clientDaylight.connected()) {
           clientDaylight.print("g\n");
@@ -227,12 +269,10 @@ void handleHeartbeat() {
   }
 }
 
-
 /**
  * Interrupt called when wireless drops.
  */
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
-
   reconnect = true;
 }
 
@@ -302,59 +342,35 @@ void handleReconnect() {
   }
 }
 
-
-/**
- * Changes the mode used to calculate data sent to the bulbs.
- */
-void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
-
-  if (argc != 1) {
-    reply.print("ER\n");
-    return;
-  }
-
-  if (argv[0][0] == 'c')
-    outputMode = MODE_COLOR;
-  else if (argv[0][0] == 't')
-    outputMode = MODE_TEMP;
-  else if (argv[0][0] == 'l')
-    outputMode = MODE_LISTEN;
-  else if (argv[0][0] == 'o')
-    outputMode = MODE_OFF;
-  
-  reply.print("OK\n");
-}
-
-
 /**
  * Changes the saved color temperature that will be sent to the bulbs when the temperature mode is used.
  */
-void commandSetTemp(Stream& reply, int argc, const char** argv) {
+void onCommandSetTemp(Stream& reply, int argc, const char** argv) {
+  if (outputMode != MODE_OFF) {
+    if (argc != 1) {
+      reply.print("ER\n");
+      return;
+    }
 
-  if (argc != 1) {
-    reply.print("ER\n");
-    return;
+    if (strcmp(argv[0], "a") == 0)
+      tempAuto = true;
+    else {
+      tempAuto = false;
+      temperature = (uint8_t)atoi(argv[0]);
+    }
   }
-
-  if (argv[0][0] == 'a')
-    tempAuto = true;
-  else {
-    tempAuto = false;
-    temperature = (uint8_t)atoi(argv[0]);
-  }
-  
   reply.print("OK\n");
 }
-
 
 /**
  * Changes the saved color channels that will be sent to the bulbs when the color mode is used.
  */
-void commandSetColor(Stream& reply, int argc, const char** argv) {
+void onCommandSetColor(Stream& reply, int argc, const char** argv) {
+  if (outputMode != MODE_OFF)
+    outputMode = MODE_COLOR;
   
-  if (argc == 1 && argv[0][0] == 'a') {
+  if (argc == 1 && strcmp(argv[0], "a") == 0)
     colorAuto = true;
-  }
   else if (argc == 3) {
     colorAuto = false;
     colorRed   = (uint8_t)atoi(argv[0]);
@@ -365,8 +381,52 @@ void commandSetColor(Stream& reply, int argc, const char** argv) {
     reply.print("ER\n");
     return;
   }
+    
+  reply.print("OK\n");
+}
+
+/**
+ * Changes the actions of the pressure sensor.
+ */
+void onCommandSetBrightness(Stream& reply, int argc, const char** argv) {
+  if (argc == 1) {
+    if (strcmp(argv[0], "auto")) {
+      pressureAuto = true;
+    } else {
+      pressureAuto = false;
+      pressureDimValue = (uint8_t)atoi(argv[0]);
+    }
+  } else {
+    reply.print("ER\n");
+    return;
+  }
   
   reply.print("OK\n");
 }
 
+/**
+ * Provides a way to turn the lumen nodes on and off while managing the previous
+ * state information for you.
+ */
+void setpower(PowerChangeState powerState) {
+  static int lastOutputMode;
+  
+  // Turn toggle into the appropriate command
+  if (powerState == POWER_TOGGLE)
+    powerState = (outputMode == MODE_OFF ? POWER_ON : POWER_OFF);
+  
+  // Save state & power off or power on & restore state 
+  if (outputMode != MODE_OFF && powerState == POWER_OFF) {
+    lastOutputMode = outputMode;
+  } else if (outputMode == MODE_OFF && powerState == POWER_ON) {
+    outputMode = lastOutputMode;
+  }
+}
 
+/**
+ * Toggles turning the lumen nodes on and off.
+ * This function is called when the sound sensor hears two quick claps.
+ */
+void OnDoubleClap() {
+  setpower(POWER_TOGGLE);
+}
