@@ -112,6 +112,12 @@ void setup() {
 }
 
 void loop() {
+
+  //HIJACK LOOP
+  while (true) {
+    yield();
+  }
+  
   clients.handle(listenSocket);
   
   //Handle dispatching commands from various sources if they are available
