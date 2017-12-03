@@ -25,6 +25,8 @@
 #include <CommandInterpreter.h>
 #include <TcpClientRegistrar.h>
 #include <Pcf8591.h>
+#include <WiFiClientReliable.h>
+#include <WiFiServerReliable.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
@@ -114,9 +116,23 @@ void setup() {
 void loop() {
 
   //HIJACK LOOP
-  while (true) {
-    yield();
-  }
+/*  while (true) {
+    delay(500);
+
+    Serial.println("Server starting");
+    WiFiServerReliable serv(30);
+
+    while (!serv.hasClient()) {
+      delay(500);
+    }
+    
+    Serial.println("Got a client");
+    WiFiClientReliable cli = serv.available();
+    cli.print("LLAMAS\n");
+    cli.stop();
+    
+    Serial.println("Sent and closing");
+  }*/
   
   clients.handle(listenSocket);
   
