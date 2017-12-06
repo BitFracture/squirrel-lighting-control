@@ -1,7 +1,7 @@
 /**
    The Flying Squirrels: Squirrel Lighting Controller
    Node:     2/Client: Sun Meter
-   Hardware: ESP8266Reliable-01[S]
+   Hardware: ESP8266-01[S]
    Purpose:  Monitor exterior light levels, report to server.
    Author:   Erik W. Greif
    Date:     2017-10-14
@@ -56,16 +56,11 @@ void setup() {
 UdpStream clientSock(IPAddress(192,168,3,1), 40);
 void loop() {
 //*
-  static WiFiClientReliable clientSock;
-  Serial.println("Connecting...");
-  if (clientSock.connect("192.168.3.1", 30)) {
-    Serial.println("Recieving...");
-    Serial.print("\"");
-    Serial.print(clientSock.readStringUntil('\n'));
-    Serial.println("\"");
+  uint8_t connectState = 0;
+  while (!connectState) {
+    connectState = clientSock.begin();
+    Serial.printf("Connecting got %i\n", connectState);
   }
-  delay(100);
-  Serial.printf("Connecting got %i\n", clientSock.begin());
   while (true) {
     //delay(500);
     Serial.println("-----\nSending data...");

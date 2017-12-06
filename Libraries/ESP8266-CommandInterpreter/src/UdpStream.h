@@ -42,6 +42,7 @@ private:
 	int sendCounter = 0;
 	long sequenceNumber = 0;
 	bool isServer = false;
+	bool synAck = false;
 };
 
 #endif

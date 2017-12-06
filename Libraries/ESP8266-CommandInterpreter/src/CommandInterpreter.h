@@ -58,7 +58,12 @@ private:
 		receiveCount = receiveCounter != 0 ? receiveCounter : &internalReceiveCounter;
 	}
     int  available() { return sourceStream->available(); }
-    void flush()     { sourceStream->flush(); }
+    void flush() {
+		
+		sourceStream->print(stringData);
+		stringData = String();
+		sourceStream->flush();
+	}
     int peek()      { return sourceStream->peek(); }
 	
     int read() {

@@ -49,7 +49,14 @@ int UdpStream::read() {
 			//Negative sequence number means sync packet
 			if (recSequenceNumber == -1) {
 				//If negative, send blank with sequence is -1, set sequenceNumber to 0
-				sequenceNumber = 0;
+				if (isServer) {
+					sequenceNumber = 0;
+					_connection.beginPacket(address, port);
+					_connection.printf("-1\r\r\n");
+					_connection.endPacket();
+				}
+				else
+					synAck = true;
 			} else {
 				//If server, must be > sequenceNumber, set the sequence number
 				if (isServer) {
@@ -121,11 +128,25 @@ void UdpStream::flush() {
 }
 
 uint8_t UdpStream::begin() {
+	stop();
+	
 	_connected = _connection.begin(port);
 	if (_connected) {
 		commandReceiving = false;
 		receiveData = String();
 		sendData = String();
+		sequenceNumber = 0;
+		
+		if (!isServer) {
+			//Sync the server
+			synAck = false;
+			_connection.beginPacket(address, port);
+			_connection.printf("-1\r\r\n");
+			_connection.endPacket();
+			String response = readStringUntil('\n');
+			if (!synAck)
+				_connected = 0;
+		}
 	}
 	
 	return _connected;
