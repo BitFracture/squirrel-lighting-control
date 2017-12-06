@@ -25,8 +25,7 @@
 #include <CommandInterpreter.h>
 #include <TcpClientRegistrar.h>
 #include <Pcf8591.h>
-#include <WiFiClientReliable.h>
-#include <WiFiServerReliable.h>
+#include <UdpStream.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
@@ -56,6 +55,7 @@ TcpClientRegistrar clients;
 //Output indicator only
 Pcf8591 ioChip(&Wire);
 
+UdpStream serv(40);
 void setup() {
   //Turn wi-fi off (fix for soft reset)
   WiFi.mode(WIFI_OFF);
@@ -111,28 +111,37 @@ void setup() {
   clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
   clients.assign("iocontrol", &clientIoControl);
+
+  Serial.printf("Server began %i\n", serv.begin());
 }
 
 void loop() {
 
   //HIJACK LOOP
-/*  while (true) {
+  /*Serial.printf("Server began %i\n", serv.begin());
+    
+  while (true) {
     delay(500);
 
-    Serial.println("Server starting");
-    WiFiServerReliable serv(30);
-
-    while (!serv.hasClient()) {
-      delay(500);
-    }
-    
-    Serial.println("Got a client");
-    WiFiClientReliable cli = serv.available();
-    cli.print("LLAMAS\n");
-    cli.stop();
-    
-    Serial.println("Sent and closing");
+    Serial.printf("Checking for data...\n");
+    serv.setTimeout(2000);
+    String data = serv.readStringUntil('\n');
+    Serial.printf("Got data \"%s\"\n", data.c_str());
+    serv.printf("My reply\n");
+    serv.flush();
   }*/
+
+  //static uint32_t timeTemp = millis();
+  //if (millis() - timeTemp > 1000) {
+    Serial.printf("Checking for data...\n");
+    serv.setTimeout(4000);
+    String data = serv.readStringUntil('\n');
+    Serial.printf("Got data \"%s\"\n", data.c_str());
+    serv.printf("My reply\n");
+    serv.flush();
+
+    Serial.println(serv.getSendCount());
+  //}
   
   clients.handle(listenSocket);
   
