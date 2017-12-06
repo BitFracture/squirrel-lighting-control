@@ -8,29 +8,36 @@
 
 #include "WiFiClientReliable.h"
 
-WiFiClientReliable::WiFiClientReliable() : WiFiClient() {}
+WiFiClientReliable::WiFiClientReliable() {
+	
+	client = new WiFiClient();
+}
 
-WiFiClientReliable::WiFiClientReliable(const WiFiClient& copy) : WiFiClient(copy) {}
+WiFiClientReliable::WiFiClientReliable(WiFiClient& toRef) {
+	
+	client = new WiFiClient(toRef);
+}
 
 /**
  * Reads data from the socket. When a new line is found, an ACK is sent to the 
  * remote node. 
  */
 int WiFiClientReliable::read() {
-	int realData = WiFiClient::read();
+	
+	if (!client || !client->connected())
+		return -1;
+	
+	int realData = client->read();
 	if (realData <= 0) return realData;
 	
 	uint8_t data = (uint8_t)realData;
 	
 	//Command received, ack it
 	if (data == (uint8_t)'\n') {
-		receiveCount++;
 		
-		if (_ackEnable) {
-			_ackWaitEnable = false;
-			print("#ACK#\n");
-			_ackWaitEnable = true;
-		}
+		receiveCount++;
+		sendCount++;
+		client->print("#ACK#\n");
 	}
 	
 	return realData;
@@ -44,27 +51,29 @@ int WiFiClientReliable::read() {
  */
 size_t WiFiClientReliable::write(uint8_t u_Data) {
 	
+	if (!client || !client->connected())
+		return 1;
+	
 	stringData = stringData + (char)u_Data;
 	
 	if (u_Data == (uint8_t)'\n') {
 	    //Send buffer to the parent write function
 		for (int character = 0; character < stringData.length(); character++) {
-			WiFiClient::write((uint8_t)stringData[character]);
+			client->write((uint8_t)stringData[character]);
 		}
 		stringData = String();
 		sendCount++;
 		
-		//Wait for an ACK, if allowed
-		if (_ackWaitEnable) {
-			_ackEnable = false;
-			WiFiClient::setTimeout(ackTimeout);
-			String response = readStringUntil('\n');
-			WiFiClient::setTimeout(userTimeout);
-			_ackEnable = true;
-			if (!response.equals("#ACK#\n")) {
-				stop();
-				Serial.println("DEBUG: Ack failed, killed connection"); ////////////////////// TODO: Remove this
-			}
+		//Wait for an ACK
+		client->setTimeout(ackTimeout);
+		String response = client->readStringUntil('\n');
+		client->setTimeout(userTimeout);
+		
+		if (!response.equals("#ACK#")) {
+			Serial.print("[DEBUG] An ACK failed, terminating\n");
+			stop();
+		} else {
+			receiveCount++;
 		}
 	}
 	
@@ -91,7 +100,9 @@ int WiFiClientReliable::getReceiveCount() {
 void WiFiClientReliable::setTimeout(unsigned long timeout) {
 	
 	userTimeout = timeout;
-	WiFiClient::setTimeout(timeout);
+	
+	if (client)
+		client->setTimeout(timeout);
 }
 
 /**
@@ -102,4 +113,10 @@ void WiFiClientReliable::setAckTimeout(unsigned long ackTimeout) {
 	this->ackTimeout = ackTimeout;
 }
 
-
+WiFiClientReliable::~WiFiClientReliable() {
+	
+	if (client) {
+		client->stop();
+		delete client;
+	}
+}

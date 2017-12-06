@@ -23,7 +23,7 @@
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
 #include <Pcf8591.h>
-#include "WifiClientReliable.h"
+#include <UdpStream.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
@@ -35,7 +35,6 @@ CommandInterpreter ioCmd;
 WiFiClient* clientIoControl = NULL;
 WiFiServer listeningConnection(23);
 Pcf8591 ioChip(&Wire);
-//WiFiClientReliable clientSock;
 
 void setup() {
   Serial.begin(9600);
@@ -54,18 +53,21 @@ void setup() {
   registrar.assign("iocontrol", &clientIoControl);
 }
 
+UdpStream clientSock(IPAddress(192,168,3,1), 40);
 void loop() {
-/*
-  Serial.println("Connecting...");
-  if (clientSock.connect("192.168.3.1", 30)) {
-    Serial.println("Recieving...");
-    Serial.print("\"");
-    Serial.print(clientSock.readStringUntil('\n'));
-    Serial.println("\"");
-  }
-  delay(10);
-//*/
 //*
+  Serial.printf("Connecting got %i\n", clientSock.begin());
+  while (true) {
+    //delay(500);
+    Serial.println("-----\nSending data...");
+    clientSock.printf("Some data\n");
+    clientSock.flush();
+    clientSock.setTimeout(2000);
+    String data = clientSock.readStringUntil('\n');
+    Serial.printf("Got reply \"%s\"\n", data.c_str());
+  }
+//*/
+/*
   //Do nothing until we are connected to the server
   handleReconnect();
 
