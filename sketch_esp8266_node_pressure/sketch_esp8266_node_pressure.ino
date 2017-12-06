@@ -53,12 +53,12 @@ void setup() {
   registrar.assign("iocontrol", &clientIoControl);
 }
 
-UdpStream clientSock(IPAddress(192,168,3,1), 40);
+UdpStream clientSock;
 void loop() {
 //*
   uint8_t connectState = 0;
   while (!connectState) {
-    connectState = clientSock.begin();
+    connectState = clientSock.begin(IPAddress(192,168,3,1), 40);
     Serial.printf("Connecting got %i\n", connectState);
   }
   while (true) {

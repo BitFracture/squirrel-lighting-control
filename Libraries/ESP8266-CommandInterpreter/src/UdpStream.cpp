@@ -1,21 +1,28 @@
 
 #include "UdpStream.h"
 
-UdpStream::UdpStream(int port) {
+UdpStream::UdpStream() {
+}
+
+uint8_t UdpStream::begin(int port) {
 	isServer = true;
 	this->port = port;
 	
 	receiveData = String();
 	sendData = String();
+	
+	return _commonBegin();
 }
 
-UdpStream::UdpStream(IPAddress address, int port) {
+uint8_t UdpStream::begin(IPAddress address, int port) {
 	isServer = false;
 	this->port = port;
 	this->address = address;
 	
 	receiveData = String();
 	sendData = String();
+	
+	return _commonBegin();
 }
 
 int UdpStream::read() {
@@ -127,7 +134,7 @@ void UdpStream::flush() {
 	sendData = String();
 }
 
-uint8_t UdpStream::begin() {
+uint8_t UdpStream::_commonBegin() {
 	stop();
 	
 	_connected = _connection.begin(port);

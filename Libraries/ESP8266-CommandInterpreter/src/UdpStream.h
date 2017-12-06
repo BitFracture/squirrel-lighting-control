@@ -10,8 +10,7 @@
  
 class UdpStream : public Stream {
 public:
-	UdpStream(int);
-	UdpStream(IPAddress, int);
+	UdpStream();
 	
 	virtual void flush();
 	virtual int read();
@@ -19,7 +18,8 @@ public:
 	virtual int available() { return commandReceiving ? commandLength - commandIndex : 0; }
 	virtual size_t write(uint8_t u_Data);
 	
-	virtual uint8_t begin();
+	virtual uint8_t begin(int);
+	virtual uint8_t begin(IPAddress, int);
 	virtual void stop();
 	
 	virtual uint8_t connected();
@@ -28,6 +28,8 @@ public:
 	int getReceiveCount() { return this->receiveCounter; }
 	
 private:
+	virtual uint8_t _commonBegin();
+	
 	char receiveBuffer[1500];
 	bool commandReceiving = false;
 	int commandIndex = 0;
