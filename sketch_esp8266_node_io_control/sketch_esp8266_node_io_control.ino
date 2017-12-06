@@ -33,8 +33,14 @@ WiFiClient clientPressure;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
 
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+TcpClientRegistrar clients;
+WiFiServer listenSocket(900);
+WiFiClient* clientLaptop = NULL;
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+
 //Wireless nonsense
-const char* WIFI_SSID = "SQUIRREL_NET";
+const char* WIFI_SSID = "SQUIRREL_NET1";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
 
@@ -46,8 +52,8 @@ const int MODE_OFF    = 3; //Lights set off
 const int MODE_YIELD  = 4; //Transmission to bulbs is disbled
 
 //IO chip definitions
-const int PCF_PIN_AUDIO = 0;
-const int PCF_PIN_MOTION = 1;
+const int PCF_PIN_AUDIO = 1;
+const int PCF_PIN_MOTION = 0;
 const int PCF_CHIP_SELECT = 0;
 
 int outputMode = MODE_TEMP;
@@ -60,13 +66,14 @@ uint8_t temperature = 0;
 uint8_t brightness = 0;
 
 //Pressure sensor
-bool pressureAuto = true; //Dim lights when the user is on sensor.
+bool pressureDimOn = true; //Dim lights when the user is on sensor.
 uint8_t pressureDimValue = 0;
 
 //Motion detector
 unsigned long lastMotionTime = millis(); //Motion timer
 int motionTimeout = 30;    //30 seconds to power off
 uint8_t motionValue = 0;
+const int MOTION_THRESHHOLD = 50; // Nomally: 0 when no motion detected, 93 when detected
 
 bool motionEnabled  = false; //Can clap trigger power state?
 bool clapEnabled  = false; //Can clap trigger power state?
@@ -115,6 +122,12 @@ void setup() {
   squirrelCmd.assign("get-motion", onCommandGetMotion);
   squirrelCmd.assign("get-mode", onCommandGetMode);
   squirrelCmd.assign("listen", onCommandSetListen);
+  squirrelCmd.assign("get-debug", onCommandGetDebug);
+  
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+  clients.assign("laptop", &clientLaptop);
+  listenSocket.begin();
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
 }
 
 
@@ -128,8 +141,18 @@ void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
   
-  //Handle commands
-  squirrelCmd.handle(Serial);
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+  clients.handle(listenSocket);
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+
+//Handle commands
+squirrelCmd.handle(Serial);
+  
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+  if (clientLaptop && clientLaptop->connected())
+    squirrelCmd.handle(*clientLaptop);
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+  
   if (clientSquirrel.connected())
     squirrelCmd.handle(clientSquirrel);
   
@@ -137,7 +160,6 @@ void loop() {
   char discBuffer;
   int packetSize = clientDiscover.parsePacket();
   if (packetSize) {
-    
     discBuffer = 0;
     IPAddress newClientIP = clientDiscover.remoteIP();
     
@@ -205,13 +227,13 @@ void loop() {
       if (motionEnabled) {
         if (outputMode == MODE_OFF) {
           // Motion detected
-          if (motionValue > 100) {
+          if (motionValue > MOTION_THRESHHOLD) {
             lastMotionTime = millis();
             setPower(POWER_ON);
           }
         } else if (millis() - lastMotionTime > motionTimeout * 1000) {
           setPower(POWER_OFF);
-        } else if (motionValue > 100) {
+        } else if (motionValue > MOTION_THRESHHOLD) {
           // Motion detected
           lastMotionTime = millis();
         }
@@ -289,9 +311,8 @@ void loop() {
     }
   }
   
-  handleHeartbeat();
+  //handleHeartbeat();
 }
-
 
 /**
  * Blinks the output LED at the given rate.
@@ -302,7 +323,7 @@ void handleHeartbeat() {
   //Blink the LED on AOut by toggling from output to hi-z mode
   if (millis() - aliveIndicateTime > 2000) {
     aliveIndicateTime = millis();
-    ioChip.write(0, 255, !ioChip.getOutputEnabled());
+    //ioChip.write(0, 255, !ioChip.getOutputEnabled());  ///////////////----------------------Put Back
   }
 }
 
@@ -312,7 +333,6 @@ void handleHeartbeat() {
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
   reconnect = true;
 }
-
 
 /**
  * Takes care of tearing down any open connections when wireless is lost. Then the process is as follows:
@@ -385,24 +405,38 @@ void handleReconnect() {
  */
 void setPower(PowerChangeState powerState) {
   static int lastOutputMode;
+  static bool lastMotionEnabled;
+  bool toggleMotion = false; // Insure motion detector doesn't wake up clapp sleep 
   
   // Turn toggle into the appropriate command
-  if (powerState == POWER_TOGGLE)
+  if (powerState == POWER_TOGGLE){
+    toggleMotion = true;
     powerState = (outputMode == MODE_OFF ? POWER_ON : POWER_OFF);
+  }
+
+  Serial.printf("Power set to %s\n", powerState == MODE_OFF ? "OFF" : "ON");
   
   // Save state & power off or power on & restore state 
   if (outputMode != MODE_OFF && powerState == POWER_OFF) {
     lastOutputMode = outputMode;
+    outputMode = MODE_OFF;
+    
+    if (toggleMotion)
+      lastMotionEnabled = motionEnabled;
   } else if (outputMode == MODE_OFF && powerState == POWER_ON) {
     outputMode = lastOutputMode;
+    
+    if (toggleMotion)
+      motionEnabled = lastMotionEnabled;
   }
+  
 }
 
 /**
  * Changes the saved color channels that will be sent to the bulbs when the color mode is used.
  */
 void onCommandSetColor(Stream& reply, int argc, const char** argv) {  
-  if (argc == 1 && strcmp(argv[0], "a") == 0)
+  if (argc == 1 && strcmp(argv[0], "auto") == 0)
     colorAuto = true;
   else if (argc == 3) {
     colorAuto = false;
@@ -432,7 +466,7 @@ void onCommandGetColor(Stream& reply, int argc, const char** argv) {
  */
 void onCommandSetTemp(Stream& reply, int argc, const char** argv) {
   if (argc == 1) {
-    if (strcmp(argv[0], "a") == 0)
+    if (strcmp(argv[0], "auto") == 0)
       tempAuto = true;
     else {
       tempAuto = false;
@@ -466,10 +500,10 @@ void onCommandGetTemp(Stream& reply, int argc, const char** argv) {
  */
 void onCommandSetBrightness(Stream& reply, int argc, const char** argv) {
   if (argc == 1) {
-    if (strcmp(argv[0], "auto") == 0)
-      pressureAuto = true;
+    if (strcmp(argv[0], "off") == 0)
+      pressureDimOn = false;
     else {
-      pressureAuto = false;
+      pressureDimOn = true;
       pressureDimValue = (uint8_t)atoi(argv[0]);
     }
   } else {
@@ -485,7 +519,7 @@ void onCommandSetBrightness(Stream& reply, int argc, const char** argv) {
  * that the brightness will be dimmed.
  */
 void onCommandGetBrightness(Stream& reply, int argc, const char** argv) {
-  if (pressureAuto)
+  if (pressureDimOn)
     reply.printf("%i\n", pressureDimValue);
   else
     reply.println("OFF");
@@ -578,6 +612,7 @@ void onCommandSetListen(Stream& reply, int argc, const char** argv) {
   if (outputMode != MODE_OFF) {
     reply.print("OK\n");
     outputMode = MODE_LISTEN;
+    return;
   }
   
   reply.print("ER\n");
@@ -598,6 +633,39 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
   }
   
   reply.print(modeName);
+}
+
+/**
+ * Returns the data from all of the connected sensors in one big block.
+ */
+void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
+  bool pOn = false, dOn = false;
+  
+  uint8_t aLevel = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_AUDIO);
+  uint8_t mValue = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_MOTION);
+  uint8_t pLevel, brightness;
+  
+  // Collect pressure sensor data
+  if (clientPressure.connected()) {
+    pOn = true;
+    clientPressure.print("g");
+    pLevel = (uint8_t) clientPressure.readStringUntil('\n').toInt();
+  }
+  
+  // Collect photosensor data
+  if (clientDaylight.connected()) {
+    dOn = true;
+    clientDaylight.print("g");
+    brightness = (uint8_t) clientDaylight.readStringUntil('\n').toInt();
+  }
+  
+  String strPressure(pLevel);
+  String strBrightness(brightness);
+  
+  reply.printf("Audio: %i\tMotion: %i\tPressure: %s\tPhotocell: %s\n",
+                aLevel, mValue,
+                (pOn ? strPressure.c_str() : "Not connected."),
+                (dOn ? strBrightness.c_str() : "Not connected."));
 }
 
 /**
