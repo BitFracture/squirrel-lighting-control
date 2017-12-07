@@ -80,7 +80,7 @@ void setup() {
   Serial.print("DEBUG: WiFi AP is ready\n");
   
   listenSocket.begin();
-  Serial.print("DEBUG: Server is ready\n");
+  Serial.print("DEBUG: Name server is ready\n");
 
   clientRemoteDebug.begin(24);
 
@@ -95,26 +95,23 @@ void setup() {
   serialCmd.assign("help", commandHelp);
   serialCmd.assign("test-args", commandTestArgs);
   serialCmd.assign("set-timeout", commandSetTimeout);
-  serialCmd.assign("color", commandSetColor);
-  serialCmd.assign("temp", commandSetTemp);
-  serialCmd.assign("test", commandTest);
 
   //Remote user commands (proxy them to IOControl)
-  serialCmd.assign("color", commandNotFound);
-  serialCmd.assign("get-color", commandNotFound);
-  serialCmd.assign("temp", commandNotFound);
-  serialCmd.assign("get-temp", commandNotFound);
-  serialCmd.assign("brightness", commandNotFound);
-  serialCmd.assign("get-brightness", commandNotFound);
-  serialCmd.assign("clap", commandNotFound);
-  serialCmd.assign("get-clap", commandNotFound);
-  serialCmd.assign("power", commandNotFound);
-  serialCmd.assign("get-power", commandNotFound);
-  serialCmd.assign("motion", commandNotFound);
-  serialCmd.assign("get-motion", commandGetMotion);
-  serialCmd.assign("get-mode", commandGetMode);
-  serialCmd.assign("listen", commandNotFound);
-  serialCmd.assign("get-debug", commandGetDebug);
+  serialCmd.assign("color",        onSetColor);
+  serialCmd.assign("get-color",      onGetColor);
+  serialCmd.assign("temp",           onSetTemp);
+  serialCmd.assign("get-temp",       onGetTemp);
+  serialCmd.assign("brightness",     onSetBrightness);
+  serialCmd.assign("get-brightness", onGetBrightness);
+  serialCmd.assign("clap",           onSetClap);
+  serialCmd.assign("get-clap",       onGetClap);
+  serialCmd.assign("power",          onSetPower);
+  serialCmd.assign("get-power",      onGetPower);
+  serialCmd.assign("motion",         onSetMotion);
+  serialCmd.assign("get-motion",     onGetMotion);
+  serialCmd.assign("get-mode",       onGetMode);
+  serialCmd.assign("listen",         onSetListen);
+  serialCmd.assign("get-debug",      onGetDebug);
   
   //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -154,6 +151,10 @@ void loop() {
   handleHeartbeat();
 }
 
+//******************************************************************************
+//    MAINTENANCE LOOPS
+//******************************************************************************
+
 /**
  *  Handles basic reconnect operations
  */
@@ -182,6 +183,10 @@ void handleHeartbeat() {
   }
 }
 
+//******************************************************************************
+//    REMOTE COMMAND HANDLERS
+//******************************************************************************
+
 /**
  * Reused by many handler functions to invoke remote commands without too much logic.
  */
@@ -197,7 +202,7 @@ void simpleProxyHandler(Stream& port, int argc, const char** argv, char* command
   }
 
   if (!remote.connected()) {
-    port.print("ER: A remote node is offline\n");
+    port.print("ER: Remote node is offline\n");
     port.flush();
     return;
   }
@@ -220,50 +225,62 @@ void simpleProxyHandler(Stream& port, int argc, const char** argv, char* command
   port.printf("%s\n", response.c_str());
 }
 
-void commandNotFound(Stream& port, int argc, const char** argv) {
-  port.print("Unknown command\n");
-}
+void onSetColor(Stream& port, int argc, const char** argv) {
 
-void commandGetIp(Stream& port, int argc, const char** argv) {
-  if (argc <= 0) {
-    String toPrint = WiFi.softAPIP().toString() + "\n";
-    port.print(toPrint);
+  if (argc != 1 && argc != 3) {
+    port.print("ER: Requires 1 or 3 arguments\n");
     port.flush();
+    return;
   }
-  else {
-    String toPrint = clients.findIp(argv[0]).toString() + "\n";
-    port.print(toPrint);
-    port.flush();
-  }
+  
+  simpleProxyHandler(port, argc, argv, "color", outboundIoControl, 1, 3);
 }
-
-void commandScanNetworks(Stream& port, int argc, const char** argv) {
-  int numNetworks = WiFi.scanNetworks();
-  for (int i = 0; i < numNetworks; i++) {
-    port.print(WiFi.SSID(i));
-    port.print(" (");
-    port.print(WiFi.RSSI(i));
-    port.print(", ");
-    port.print(WiFi.channel(i));
-    port.print(")\n");
-  }
+void onGetColor(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-color", outboundIoControl);
 }
-
-void commandIdentify(Stream& port, int argc, const char** argv) {
-  port.print("squirrel\n");
+void onSetTemp(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "temp", outboundIoControl, 1, 1);
 }
-
-void commandGetMode(Stream& port, int argc, const char** argv) {
-  simpleProxyHandler(port, argc, argv, "get-mode", outboundIoControl);
+void onGetTemp(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-temp", outboundIoControl);
 }
-
-void commandGetMotion(Stream& port, int argc, const char** argv) {
+void onSetBrightness(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "brightness", outboundIoControl, 1, 1);
+}
+void onGetBrightness(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-brightness", outboundIoControl);
+}
+void onSetClap(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "clap", outboundIoControl, 1, 1);
+}
+void onGetClap(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-clap", outboundIoControl);
+}
+void onSetPower(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "power", outboundIoControl, 1, 1);
+}
+void onGetPower(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-power", outboundIoControl);
+}
+void onSetMotion(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "motion", outboundIoControl, 1, 1);
+}
+void onGetMotion(Stream& port, int argc, const char** argv) {
   simpleProxyHandler(port, argc, argv, "get-motion", outboundIoControl);
 }
-
-void commandGetDebug(Stream& port, int argc, const char** argv) {
+void onGetMode(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-mode", outboundIoControl);
+}
+void onSetListen(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "listen", outboundIoControl);
+}
+void onGetDebug(Stream& port, int argc, const char** argv) {
   simpleProxyHandler(port, argc, argv, "get-debug", outboundIoControl);
 }
+
+//******************************************************************************
+//    LOCAL COMMAND HANDLERS
+//******************************************************************************
 
 void commandHelp(Stream& port, int argc, const char** argv) {
   port.print("/======================================\\\n");
@@ -279,6 +296,27 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.print("> set-timeout ... Millis to respond to\n");
   port.print("                  connection commands\n");
   port.print("\n");
+}
+
+void commandIdentify(Stream& port, int argc, const char** argv) {
+  port.print("squirrel\n");
+}
+
+void commandNotFound(Stream& port, int argc, const char** argv) {
+  port.print("Unknown command\n");
+}
+
+void commandGetIp(Stream& port, int argc, const char** argv) {
+  if (argc <= 0) {
+    String toPrint = WiFi.softAPIP().toString() + "\n";
+    port.print(toPrint);
+    port.flush();
+  }
+  else {
+    String toPrint = clients.findIp(argv[0]).toString() + "\n";
+    port.print(toPrint);
+    port.flush();
+  }
 }
 
 void commandTestArgs(Stream& port, int argc, const char** argv) {
@@ -307,51 +345,6 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
   clients.setConnectionTimeout(timeout);
 }
 
-char cmdOutBuffer[15];
-void commandSetColor(Stream& port, int argc, const char** argv) {
-
-  if (!clientIoControl || !clientIoControl->connected())
-  {
-    port.print("Waiting for IOControl connection, please try again later");
-    return;
-  }
-  
-  if (argc == 1 && strcmp("auto", argv[0]) == 0) {
-    sprintf(cmdOutBuffer, "c a\n");
-  } else if (argc == 3) {
-    sprintf(cmdOutBuffer, "c %s %s %s\n", argv[0], argv[1], argv[2]);
-  } else {
-    port.print("You must specify 3 space-delimited color channels 0 to 255 or auto\n");
-    return;
-  }
-  
-  clientIoControl->print(&cmdOutBuffer[0]);
-  port.print("OK\n");
-}
-
-void commandSetTemp(Stream& port, int argc, const char** argv) {
-  if (argc != 1) {
-    
-    port.print("You must specify 1 color channel 0 to 255\n");
-    return;
-  }
-
-  if (!clientIoControl || !clientIoControl->connected())
-  {
-    port.print("Waiting for IOControl connection, please try again later");
-    return;
-  }
-
-  if (strcmp("auto", argv[0]) == 0) {
-    sprintf(cmdOutBuffer, "t a\n");
-  } else {
-    sprintf(cmdOutBuffer, "t %s\n", argv[0]);
-  }
-
-  clientIoControl->print(&cmdOutBuffer[0]);
-  port.print("OK\n");
-}
-
 /**
  * Takes remote data and outputs it to the command prompt at this node.
  */
@@ -366,15 +359,4 @@ void commandRemoteDebug(Stream& port, int argc, const char** argv) {
 
   port.print("OK\n");
 }
-
-void commandTest(Stream& port, int argc, const char** argv) {
-
-  port.print("this-is");
-  port.print("-goat\n");
-  port.setTimeout(2000);
-  String response = port.readStringUntil('\n');
-  port.printf("received %s\n", response.c_str());
-}
-
-
 
