@@ -40,6 +40,8 @@ WiFiClient* clientMobile    = NULL;
 WiFiClient* clientLaptop    = NULL;
 WiFiClient* clientIoControl = NULL;
 WiFiUDP clientRemoteDebug;
+UdpStream outboundIoControl;
+UdpStream inboundIoControl;
 
 //Interpreters for user connections (clones, w/ separate buffers)
 CommandInterpreter serialCmd;
@@ -55,7 +57,7 @@ TcpClientRegistrar clients;
 //Output indicator only
 Pcf8591 ioChip(&Wire);
 
-UdpStream serv(40);
+UdpStream serv;
 void setup() {
   //Turn wi-fi off (fix for soft reset)
   WiFi.mode(WIFI_OFF);
@@ -112,7 +114,7 @@ void setup() {
   clients.assign("mobile", &clientMobile);
   clients.assign("iocontrol", &clientIoControl);
 
-  Serial.printf("Server began %i\n", serv.begin());
+  Serial.printf("Listening to IO Control, state is %i\n", inboundIoControl.begin(201));
 }
 
 void loop() {
@@ -133,14 +135,14 @@ void loop() {
 
   //static uint32_t timeTemp = millis();
   //if (millis() - timeTemp > 1000) {
-    Serial.printf("Checking for data...\n");
+  /*  Serial.printf("Checking for data...\n");
     serv.setTimeout(4000);
     String data = serv.readStringUntil('\n');
     Serial.printf("Got data \"%s\"\n", data.c_str());
     serv.printf("My reply\n");
     serv.flush();
 
-    Serial.println(serv.getSendCount());
+    Serial.println(serv.getSendCount());*/
   //}
   
   clients.handle(listenSocket);
@@ -154,6 +156,7 @@ void loop() {
     mobileCmd.handle(*clientLaptop);
   if (clientIoControl)
     ioCmd.handle(*clientIoControl);
+  ioCmd.handle(inboundIoControl);
 
   handleHeartbeat();
 }
@@ -183,10 +186,12 @@ void commandGetIp(Stream& port, int argc, const char** argv) {
   if (argc <= 0) {
     String toPrint = WiFi.softAPIP().toString() + "\n";
     port.print(toPrint);
+    port.flush();
   }
   else {
     String toPrint = clients.findIp(argv[0]).toString() + "\n";
     port.print(toPrint);
+    port.flush();
   }
 }
 

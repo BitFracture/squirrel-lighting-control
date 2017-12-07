@@ -29,6 +29,27 @@ int UdpStream::read() {
 	if (!_connected)
 		return -1;
 	
+	handleGetPacket();
+	
+	//If we are receiving, fetch a byte
+	if (commandReceiving) {
+		int toReturn = receiveData[commandIndex++];
+		
+		if (commandIndex >= commandLength)
+			commandReceiving = false;
+		
+		return toReturn;
+	} 
+	
+	//Return -1 until data a full command exists
+	return -1;
+}
+
+/**
+ * Handles processing incoming packets if one is not already waiting to be processed.
+ */
+void UdpStream::handleGetPacket() {
+	
 	//If not receiving a command, see if a packet has arrived
 	if (!commandReceiving) {
 		if ((commandLength = _connection.parsePacket()) > 0) {
@@ -70,12 +91,12 @@ int UdpStream::read() {
 					if (recSequenceNumber > sequenceNumber)
 						sequenceNumber = recSequenceNumber;
 					else
-						goto exitReceiveLoop;
+						return;
 				}
 				//If client, must equal sequenceNumber
 				else {
 					if (sequenceNumber != recSequenceNumber)
-						goto exitReceiveLoop;
+						return;
 				}
 				
 				//Our new command is ready
@@ -87,20 +108,6 @@ int UdpStream::read() {
 			}
 		}
 	}
-	exitReceiveLoop:
-	
-	//If we are receiving, fetch a byte
-	if (commandReceiving) {
-		int toReturn = receiveData[commandIndex++];
-		
-		if (commandIndex >= commandLength)
-			commandReceiving = false;
-		
-		return toReturn;
-	} 
-	
-	//Return -1 until data a full command exists
-	return -1;
 }
 
 size_t UdpStream::write(uint8_t u_Data) {

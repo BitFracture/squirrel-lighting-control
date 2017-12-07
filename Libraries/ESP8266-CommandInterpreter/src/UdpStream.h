@@ -14,8 +14,8 @@ public:
 	
 	virtual void flush();
 	virtual int read();
-	virtual int peek()      { return commandReceiving ? (int)receiveData[commandIndex] : -1; }
-	virtual int available() { return commandReceiving ? commandLength - commandIndex : 0; }
+	virtual int peek()      { handleGetPacket(); return commandReceiving ? (int)receiveData[commandIndex] : -1; }
+	virtual int available() { handleGetPacket(); return commandReceiving ? commandLength - commandIndex : 0; }
 	virtual size_t write(uint8_t u_Data);
 	
 	virtual uint8_t begin(int);
@@ -29,6 +29,7 @@ public:
 	
 private:
 	virtual uint8_t _commonBegin();
+	void handleGetPacket();
 	
 	char receiveBuffer[1500];
 	bool commandReceiving = false;
