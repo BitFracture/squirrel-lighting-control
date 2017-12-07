@@ -22,6 +22,7 @@
 
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
+#include <UdpStream.h>
 #include <Pcf8591.h>
 
 const char* WIFI_SSID = "SQUIRREL_NET";
@@ -29,10 +30,8 @@ const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
  
 WiFiEventHandler disconnectedEventHandler;
-TcpClientRegistrar registrar;
 CommandInterpreter ioCmd;
-WiFiClient* clientIoControl = NULL;
-WiFiServer listeningConnection(23);
+UdpStream inboundIoControl;
 Pcf8591 ioChip(&Wire);
 
 
@@ -48,23 +47,16 @@ void setup() {
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
   
   ioCmd.assign("g", getTemperature);
-
-  listeningConnection.begin();
-  registrar.assign("iocontrol", &clientIoControl);
 }
 
 
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
-
-  // Client recv
-  registrar.handle(listeningConnection);
-
+  
   //Handle commands
   ioCmd.handle(Serial);
-  if (clientIoControl != NULL && clientIoControl->connected())
-    ioCmd.handle(*clientIoControl);
+  ioCmd.handle(inboundIoControl);
 
   handleHeartbeat();
 }
@@ -91,7 +83,7 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
 
 void handleReconnect() {
-  //TODO: Reconnect if server TCP connection lost
+  
   while (reconnect) {
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
@@ -102,11 +94,14 @@ void handleReconnect() {
       continue;
     }
     
-    //Try to connect persistently to squirrel
+    //Try to register hostname to squirrel
     WiFiClient registerClient;
     if (TcpClientRegistrar::connectClient(
          registerClient, IPAddress(192, 168, 3, 1), 23, "daylight", false))
       reconnect = false;
+
+    //Open the UDP socket
+    inboundIoControl.begin(300);
   }
 }
 
@@ -115,7 +110,8 @@ void getTemperature(Stream& reply, int argc, const char** argv) {
   static const int BUFFER_LEN = 5;
   static char buffer[BUFFER_LEN];
   sprintf(buffer, "%i\n", ioChip.read(0, 0));
-  reply.print(buffer);
+  reply.print
+  (buffer);
 }
 
 
