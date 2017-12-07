@@ -88,7 +88,7 @@ void setup() {
   ioCmd.assignDefault(commandNotFound);
   ioCmd.assign("ip", commandGetIp);
 
-  //Register user commands to handler functions
+  //Register local user commands to handler functions
   serialCmd.assignDefault(commandNotFound);
   serialCmd.assign("ip", commandGetIp);
   serialCmd.assign("identify", commandIdentify);
@@ -98,6 +98,23 @@ void setup() {
   serialCmd.assign("color", commandSetColor);
   serialCmd.assign("temp", commandSetTemp);
   serialCmd.assign("test", commandTest);
+
+  //Remote user commands (proxy them to IOControl)
+  serialCmd.assign("color", commandNotFound);
+  serialCmd.assign("get-color", commandNotFound);
+  serialCmd.assign("temp", commandNotFound);
+  serialCmd.assign("get-temp", commandNotFound);
+  serialCmd.assign("brightness", commandNotFound);
+  serialCmd.assign("get-brightness", commandNotFound);
+  serialCmd.assign("clap", commandNotFound);
+  serialCmd.assign("get-clap", commandNotFound);
+  serialCmd.assign("power", commandNotFound);
+  serialCmd.assign("get-power", commandNotFound);
+  serialCmd.assign("motion", commandNotFound);
+  serialCmd.assign("get-motion", commandGetMotion);
+  serialCmd.assign("get-mode", commandGetMode);
+  serialCmd.assign("listen", commandNotFound);
+  serialCmd.assign("get-debug", commandGetDebug);
   
   //Allow mobile and laptop to do everything that the serial term can (copy)
   mobileCmd = CommandInterpreter(serialCmd);
@@ -119,31 +136,7 @@ void setup() {
 
 void loop() {
 
-  //HIJACK LOOP
-  /*Serial.printf("Server began %i\n", serv.begin());
-    
-  while (true) {
-    delay(500);
-
-    Serial.printf("Checking for data...\n");
-    serv.setTimeout(2000);
-    String data = serv.readStringUntil('\n');
-    Serial.printf("Got data \"%s\"\n", data.c_str());
-    serv.printf("My reply\n");
-    serv.flush();
-  }*/
-
-  //static uint32_t timeTemp = millis();
-  //if (millis() - timeTemp > 1000) {
-  /*  Serial.printf("Checking for data...\n");
-    serv.setTimeout(4000);
-    String data = serv.readStringUntil('\n');
-    Serial.printf("Got data \"%s\"\n", data.c_str());
-    serv.printf("My reply\n");
-    serv.flush();
-
-    Serial.println(serv.getSendCount());*/
-  //}
+  handleReconnect();
   
   clients.handle(listenSocket);
   
@@ -162,6 +155,21 @@ void loop() {
 }
 
 /**
+ *  Handles basic reconnect operations
+ */
+void handleReconnect() {
+
+  static int ioReconnectTimeout = 0;
+  if (!outboundIoControl.connected() && millis() - ioReconnectTimeout > 2000) {
+    ioReconnectTimeout = millis();
+    Serial.print("Attempting connect to IOControl\n");
+    
+    if (outboundIoControl.begin(clients.findIp("iocontrol"), 200))
+      Serial.print("Successfully connected to IOControl\n");
+  }
+}
+
+/**
  * Blinks the output LED at the given rate
  */
 void handleHeartbeat() {
@@ -174,12 +182,46 @@ void handleHeartbeat() {
   }
 }
 
-void commandNotFound(Stream& port, int argc, const char** argv) {
-  port.print("Unknown command\n");
+/**
+ * Reused by many handler functions to invoke remote commands without too much logic.
+ */
+void simpleProxyHandler(Stream& port, int argc, const char** argv, char* command, UdpStream& remote, int minArgs = 0, int maxArgs = 0) {
+
+  if (argc < minArgs || argc > maxArgs) {
+    if (minArgs == maxArgs)
+      port.printf("ER: Requires exactly %i arguments\n", minArgs);
+    else
+      port.printf("ER: Requires %i to %i arguments\n", minArgs, maxArgs);
+    port.flush();
+    return;
+  }
+
+  if (!remote.connected()) {
+    port.print("ER: A remote node is offline\n");
+    port.flush();
+    return;
+  }
+
+  String toPrint = command;
+  for (int i = 0; i < argc; i++) {
+    toPrint += String(" ") + String(argv[i]);
+  }
+  remote.printf("%s\n", toPrint.c_str());
+  remote.flush();
+
+  String response = remote.readStringUntil('\n');
+  if (response.length() == 0) {
+
+    port.print("ER: Remote node timed out\n");
+    port.flush();
+    return;
+  }
+
+  port.printf("%s\n", response.c_str());
 }
 
-void commandGetDiagnostics(Stream& port, int argc, const char** argv) {
-  WiFi.printDiag(port);
+void commandNotFound(Stream& port, int argc, const char** argv) {
+  port.print("Unknown command\n");
 }
 
 void commandGetIp(Stream& port, int argc, const char** argv) {
@@ -209,6 +251,18 @@ void commandScanNetworks(Stream& port, int argc, const char** argv) {
 
 void commandIdentify(Stream& port, int argc, const char** argv) {
   port.print("squirrel\n");
+}
+
+void commandGetMode(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-mode", outboundIoControl);
+}
+
+void commandGetMotion(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-motion", outboundIoControl);
+}
+
+void commandGetDebug(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "get-debug", outboundIoControl);
 }
 
 void commandHelp(Stream& port, int argc, const char** argv) {

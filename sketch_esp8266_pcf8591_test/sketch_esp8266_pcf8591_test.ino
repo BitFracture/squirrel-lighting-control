@@ -39,16 +39,19 @@ void setup() {
 float loopingLevel = 0.0f;
 bool lastWrite = false;
 
-void loop() {
+uint32_t data;
+uint8_t* values;
 
+void loop() {
+  
   Serial.setTimeout(50000);
   Serial.readStringUntil('\n');
-  
-  uint32_t data = analogIO.readAll(0);
-  uint8_t* values = (uint8_t*)&data;
+    
+  data = analogIO.readAll(0);
+  values = (uint8_t*)&data;
   
   Serial.printf("Got values %03d %03d %03d %03d\n", values[0], values[1], values[2], values[3]);
-
+  
   lastWrite = !lastWrite;
   analogIO.write(0, lastWrite ? 255 : 0);
 }
