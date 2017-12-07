@@ -90,14 +90,15 @@ void setup() {
 
   //Register local user commands to handler functions
   serialCmd.assignDefault(commandNotFound);
-  serialCmd.assign("ip", commandGetIp);
-  serialCmd.assign("identify", commandIdentify);
-  serialCmd.assign("help", commandHelp);
-  serialCmd.assign("test-args", commandTestArgs);
+  serialCmd.assign("ip",          commandGetIp);
+  serialCmd.assign("identify",    commandIdentify);
+  serialCmd.assign("help",        commandHelp);
+  serialCmd.assign("test-args",   commandTestArgs);
   serialCmd.assign("set-timeout", commandSetTimeout);
+  serialCmd.assign("get-stats",   commandGetStats);
 
   //Remote user commands (proxy them to IOControl)
-  serialCmd.assign("color",        onSetColor);
+  serialCmd.assign("color",          onSetColor);
   serialCmd.assign("get-color",      onGetColor);
   serialCmd.assign("temp",           onSetTemp);
   serialCmd.assign("get-temp",       onGetTemp);
@@ -144,8 +145,8 @@ void loop() {
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
     mobileCmd.handle(*clientLaptop);
-  if (clientIoControl)
-    ioCmd.handle(*clientIoControl);
+  //if (clientIoControl)
+  //  ioCmd.handle(*clientIoControl);
   ioCmd.handle(inboundIoControl);
 
   handleHeartbeat();
@@ -343,6 +344,22 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
   Serial.print("mS\n");
   
   clients.setConnectionTimeout(timeout);
+}
+
+void commandGetStats(Stream& port, int argc, const char** argv) {
+
+  long terminalToMaster = serialCmd.getReceiveCount();
+  long masterToTerminal = serialCmd.getSendCount();
+  long masterToSlave    = outboundIoControl.getSendCount();
+  long slaveToMaster    = outboundIoControl.getReceiveCount();
+  //mobileCmd
+  //laptopCmd
+  port.printf("Send and Receive Stats:\n");
+  port.printf("  Terminal to Squirrel:  %i\n", terminalToMaster);
+  port.printf("  Squirrel to Terminal:  %i\n", masterToTerminal);
+  port.printf("  Squirrel to IOControl: %i\n", masterToSlave);
+  port.printf("  IOControl to Squirrel: %i\n", slaveToMaster);
+  port.flush();
 }
 
 /**

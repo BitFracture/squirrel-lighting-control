@@ -154,16 +154,26 @@ void handleReconnect() {
     reconnect = false;
     
     //UDP Broadcast this reset debug terminal output
-    sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
-    sendDebug(&packetData[0]);
+    /*if (WiFi.localIP() == IPAddress(0,0,0,0)) {
+
+      Serial.println("IP is blank... aborting send");
+      reconnect = false;
+    }
+    else {
+    
+      sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
+      sendDebug(&packetData[0]);
+    }*/
   }
 }
 
-void sendDebug(char* buff) {
+/*void sendDebug(char* buff) {
   
   bool replied = false;
 
   while (!replied) {
+    Serial.print("Sending debug packet...\n");
+    
     //Send out debug data
     broadcast.beginPacket(serverAddress, DEBUG_PORT);
     broadcast.print(buff);
@@ -180,6 +190,7 @@ void sendDebug(char* buff) {
     if (packetSize > 0) {
       int len = broadcast.read(&packetData[0], PACKET_DATA_SIZE);
       packetData[len] = 0;
+      Serial.printf("Got response %s\n", &packetData[0]);
       if (strcmp("OK\n", &packetData[0]) == 0)
         replied = true;
     }
@@ -187,7 +198,7 @@ void sendDebug(char* buff) {
   }
   
   //broadcast.stop();
-}
+}*/
 
 void commandSetTemp(Stream& port, int argc, const char** argv) {
 
