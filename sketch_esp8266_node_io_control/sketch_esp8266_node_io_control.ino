@@ -604,7 +604,7 @@ void onCommandSetMotion(Stream& reply, int argc, const char** argv) {
       motionEnabled = false;
     else if (strcmp(argv[0], "on") == 0)
       motionEnabled = true;
-    else
+    else {
       motionTimeout = (uint8_t)atoi(argv[0]);
       lastMotionTime = millis();
       motionEnabled = true;
