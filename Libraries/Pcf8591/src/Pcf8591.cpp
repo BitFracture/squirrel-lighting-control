@@ -27,11 +27,13 @@ uint8_t Pcf8591::read(uint8_t chipNumber, uint8_t inputNumber) {
   twoWireSource->beginTransmission(thisAddress);
   twoWireSource->write(getControlCode(0, inputNumber, outputEnabled, false));
   twoWireSource->endTransmission();
-  
+ 
+  delayMicroseconds(60);
   twoWireSource->requestFrom(thisAddress, 2);
 
   //Sample two bytes, because first byte is from the previous request (see spec sheet)
   uint8_t answer = 0;
+  Serial.printf("# Reading at %i\n", inputNumber);
   for (int i = 0; i < 2; i++) {
     int startTime = millis();
     while (twoWireSource->available() <= 0) {
@@ -39,8 +41,41 @@ uint8_t Pcf8591::read(uint8_t chipNumber, uint8_t inputNumber) {
         return 0;
     }
     answer = twoWireSource->read();
+	Serial.printf("# Got %i\n", answer);
   }
   return answer;
+}
+
+uint32_t Pcf8591::readAll(uint8_t chipNumber) {
+
+	uint8_t thisAddress = getAddress(chipNumber);
+
+	Serial.print("Starting transmission\n");
+	twoWireSource->beginTransmission(thisAddress);
+	twoWireSource->write(getControlCode(0, 0, true, true));
+	twoWireSource->endTransmission();
+	Serial.print("Done\n");
+
+	delayMicroseconds(60);
+	twoWireSource->requestFrom(thisAddress, 5);
+
+	//Sample two bytes, because first byte is from the previous request (see spec sheet)
+	uint32_t answer = 0;
+	for (int i = 0; i < 5; i++) {
+		
+		int startTime = millis();
+		while (twoWireSource->available() <= 0) {
+			
+			if (startTime - millis() < timeout)
+			Serial.printf("Return fail at %i\n", i);
+			return 0;
+		}
+		uint8_t rawValue = twoWireSource->read();
+		if (i == 0) continue;
+		answer |= rawValue << ((i - 1) * 8);
+	}
+	Serial.print("Return success\n");
+	return answer;
 }
 
 /**

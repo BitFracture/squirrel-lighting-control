@@ -24,39 +24,33 @@
 Pcf8591 analogIO(&Wire);
 
 void setup() {
+  delay(5000);
+  
   Serial.begin(9600);
   Serial.println("Initialized device");
 
   //Initialize I2C connection 2=data 0=clk
   Wire.begin(2, 0);
-  analogIO.enableOutput(true);
+  //analogIO.enableOutput(true);
+  
+  delay(5000);
 }
 
 float loopingLevel = 0.0f;
+bool lastWrite = false;
 
 void loop() {
-  byte value0 = analogIO.read(0, 0);
-  byte value1 = analogIO.read(0, 1);
-  byte value2 = analogIO.read(0, 2);
-  byte value3 = analogIO.read(0, 3);
-  
-  Serial.print("ADC (");
-  Serial.print(value0);
-  delay(5);
-  Serial.print(", ");
-  Serial.print(value1);
-  delay(5);
-  Serial.print(", ");
-  Serial.print(value2);
-  delay(5);
-  Serial.print(", ");
-  Serial.print(value3);
-  delay(5);
-  Serial.println(")");
-  
-  analogIO.write(0, (1.0 + sin(loopingLevel += 0.1f)) * 127.0);
 
-  delay(500);
+  Serial.setTimeout(50000);
+  Serial.readStringUntil('\n');
+  
+  uint32_t data = analogIO.readAll(0);
+  uint8_t* values = (uint8_t*)&data;
+  
+  Serial.printf("Got values %03d %03d %03d %03d\n", values[0], values[1], values[2], values[3]);
+
+  lastWrite = !lastWrite;
+  analogIO.write(0, lastWrite ? 255 : 0);
 }
 
 
