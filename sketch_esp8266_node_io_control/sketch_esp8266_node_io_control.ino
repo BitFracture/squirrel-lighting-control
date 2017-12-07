@@ -24,21 +24,23 @@
 #include <TcpClientRegistrar.h>
 #include <CommandInterpreter.h>
 #include <Pcf8591.h>
+#include <UdpStream.h>
 #include "AverageTracker.h"
 
 Pcf8591 ioChip(&Wire);
-WiFiClient clientSquirrel;
-WiFiClient clientDaylight;
-WiFiClient clientPressure;
 
-// UdpStream inboundSquirrel(200);
-// UdpStream outboundSquirrel(201);
-// UdpStream outboundDaylight(300);
-// UdpStream outboundPressure(400);
+UdpStream outboundClientDaylight;
+UdpStream outboundClientPressure;
+UdpStream inboundSquirrel;
+UdpStream outboundSquirrel;
+
+const int PORT_SQUIRREL_TO_IO = 200;
+const int PORT_IO_TO_SQUIRREL = 201;
+const int PORT_IO_TO_DAYLIGHT = 300;
+const int PORT_IO_TO_PRESSURE = 400;
 
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
-
 
 ////////////////////////-----------------------------------------------------------------DEBUG ONLY
 TcpClientRegistrar clients;
@@ -63,6 +65,7 @@ const int PCF_PIN_AUDIO = 0;
 const int PCF_PIN_MOTION = 1;
 const int PCF_CHIP_SELECT = 0;
 
+//Current Mode (or State) of the system.
 int outputMode = MODE_TEMP;
 
 //Channel values
@@ -72,21 +75,25 @@ uint8_t colorBlue = 0;
 uint8_t temperature = 0;
 
 //Pressure sensor
-bool pressureDimOn = false; //Dim lights when the user is on sensor.
-uint8_t pressureDimValue = 0;
+const int PRESSURE_THRESHHOLD = 200; // Will register as being pressed if sensor value (pulled high) is under this value.
+static uint8_t pressureLevel = 255; // No pressure
+bool brightnessAuto = false; //Dim lights when the user is on sensor.
+uint8_t brightness = 0;
 
 //Motion detector
+const int MOTION_THRESHHOLD = 50; // Nomally: 0 when no motion detected, 93 when detected
 unsigned long lastMotionTime = millis(); //Motion timer
 int motionTimeout = 30;    //30 seconds to power off
 uint8_t motionValue = 0;
-const int MOTION_THRESHHOLD = 50; // Nomally: 0 when no motion detected, 93 when detected
 
 //Photosensor
 uint8_t photoValues = 0;
 
 //Audio Sensor
 uint8_t audioLevel = 0;
+static AverageTracker<uint8_t> avg(14);
 
+//Mode Helpers
 bool motionEnabled  = false; //Can clap trigger power state?
 bool clapEnabled  = false; //Can clap trigger power state?
 bool colorAuto    = false; //Is color mode set to auto hue cycle?
@@ -113,6 +120,7 @@ void setup() {
   delay(500);
   Serial.print("Initialized\n");
   Wire.begin(2, 0);
+  inboundSquirrel.begin(PORT_SQUIRREL_TO_IO);
 
   //Set up the wireless
   WiFi.mode(WIFI_STA);
@@ -148,7 +156,7 @@ void setup() {
  */
 void loop() {
   static uint8_t rLumen, gLumen, bLumen;
-  static uint32_t lastSendTime, thisSendTime, lastSampleTime, thisSampleTime;
+  static uint32_t lastSendTime, thisSendTime, thisSampleTime;
   
   //Do nothing until we are connected to the server
   handleReconnect();
@@ -165,8 +173,7 @@ void loop() {
     squirrelCmd.handle(*clientLaptop);
 ////////////////////////-----------------------------------------------------------------DEBUG ONLY
   
-  if (clientSquirrel.connected())
-    squirrelCmd.handle(clientSquirrel);
+  squirrelCmd.handle(inboundSquirrel);
   
   //Catch any discovery packets from lumen nodes ("d")
   char discBuffer;
@@ -190,85 +197,11 @@ void loop() {
       }
     }
   }
-
-  // Collect data from inputs
   
-  //    Audio Data Variables
-  static uint8_t lastAudioLevel = 0, lastMaxLevel = 0;
-  static unsigned long lastClapThreshHoldTime = 0;
-  static AverageTracker<uint8_t> avg(14);
-  
-  //    Pressure sensor values
-  static uint8_t pressureLevel = 255; // No pressure
-  
-  thisSampleTime = millis();
-  if (thisSampleTime - lastSampleTime > 5) {
-    // Record current audio value
-    audioLevel = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_AUDIO);
-    avg.add(audioLevel);
-      
-    // Figure out if a clap has happened
-    if (clapEnabled) {
-      if (audioLevel <= lastAudioLevel) {
-        if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-Serial.print("Peak -\n");
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-          if (millis() - lastClapThreshHoldTime < 500) {
-            lastClapThreshHoldTime = 0;
-            OnDoubleClap();
-          } else {
-            lastClapThreshHoldTime = millis();
-          }
-          lastMaxLevel = -1;
-          Serial.println("-- Down Peak --");
-        }
-        lastMaxLevel = 0;
-      } else {
-        lastMaxLevel = audioLevel;
-      }
-      
-      for (int i = avg.average(); i > 0; i--)
-        Serial.print("*");
-      
-      Serial.print("[");
-      Serial.print(lastAudioLevel);
-      Serial.println("]");
-    }
-    
-    // Update old audio value
-    lastAudioLevel = audioLevel;
-    
-    // Collect motion sensor data
-    motionValue = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_MOTION);
-    if (motionEnabled) {
-      if (outputMode == MODE_OFF) {
-        // Motion detected
-        if (motionValue > MOTION_THRESHHOLD) {
-          lastMotionTime = millis();
-          setPower(POWER_ON);
-        }
-      } else if (millis() - lastMotionTime > motionTimeout * 1000) {
-        setPower(POWER_OFF);
-      } else if (motionValue > MOTION_THRESHHOLD) {
-        // Motion detected
-        lastMotionTime = millis();
-      }
-    }
-    
-    // Collect pressure sensor data
-    if (tempAuto && clientPressure.connected()) {
-      clientPressure.print("g");
-      pressureLevel = (uint8_t) clientPressure.readStringUntil('\n').toInt();
-    }
-    
-    // Collect photosensor data
-    if (outputMode == MODE_TEMP && clientDaylight.connected()) {
-      clientDaylight.print("g");
-      photoValues = (uint8_t) clientDaylight.readStringUntil('\n').toInt();
-    }
+  if (collectSensorData(false)) {
+    updateAudioMotionPowerOnOff();
   }
-
+  
   // Changes outputs in a given time span
   thisSendTime = millis();
   if (thisSendTime - lastSendTime > 32) {
@@ -284,27 +217,23 @@ Serial.print("Peak -\n");
         gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
         bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
         
-        sprintf(toSend, "c %i %i %i\n", rLumen, gLumen, bLumen);
+        sprintf(toSend, "c %i %i %i\n", valueWithBrightness(rLumen),
+                                        valueWithBrightness(gLumen),
+                                        valueWithBrightness(bLumen));
       }
       else {
-        sprintf(toSend, "c %i %i %i\n", colorRed, colorGreen, colorBlue);
+        sprintf(toSend, "c %i %i %i\n", valueWithBrightness(colorRed),
+                                        valueWithBrightness(colorGreen), 
+                                        valueWithBrightness(colorBlue));
       }
     }
 
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
-      if (tempAuto) {
-        if (clientDaylight.connected()) {
-          clientDaylight.print("g\n");
-          String response = clientDaylight.readStringUntil('\n');
-          if (response.length() > 0)
-            temperature = (uint8_t)response.toInt();
-          else
-            clientDaylight.stop();
-        }
-      }
-      
-      sprintf(toSend, "t %i\n", temperature);
+      if (tempAuto)
+        sprintf(toSend, "t %i\n", valueWithBrightness(photoValues));
+      else
+        sprintf(toSend, "t %i\n", valueWithBrightness(temperature));
     }
 
     //Output audio reaction
@@ -339,7 +268,7 @@ void handleHeartbeat() {
   //Blink the LED on AOut by toggling from output to hi-z mode
   if (millis() - aliveIndicateTime > 2000) {
     aliveIndicateTime = millis();
-    //ioChip.write(0, 255, !ioChip.getOutputEnabled());  ///////////////----------------------Put Back
+    ioChip.write(0, 255, !ioChip.getOutputEnabled());
   }
 }
 
@@ -357,70 +286,200 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
  * 3. Open any other dependent connections
  */
 void handleReconnect() {
-
   //Reconnect if server TCP connection lost
-  if (!clientSquirrel.connected())
+  if (!outboundSquirrel.connected())
     reconnect = true;
   
   while (reconnect) {
-
     //Clean up all connections
-    clientSquirrel.stop();
     clientDiscover.stop();
-    clientDaylight.stop();
-    clientPressure.stop();
+    outboundClientDaylight.stop();
+    outboundClientPressure.stop();
     
     //Wait for wifi for 5 seconds
     Serial.print("Wait\n");
     for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
       delay(500);
     }
+    
     if (WiFi.status() != WL_CONNECTED) {
       continue;
     }
 
     //Open port for lumen broadcast discovery
     clientDiscover.begin(23);
-
-    //Try to connect persistently to squirrel
+    
+    WiFiClient tempClient;
     if (TcpClientRegistrar::connectClient(
-	        clientSquirrel, IPAddress(192, 168, 3, 1), 23, "iocontrol", true))
+	        tempClient, IPAddress(192, 168, 3, 1), 23, "iocontrol", false))
       reconnect = false;
   }
   
-  //Only connect to clientDaylight when we are successfully connected to server
-  //    delay connect attempts to 2 per second
-  static uint32_t lastTime = millis();
-  uint32_t currentTime = millis();
-  if (currentTime - lastTime > 3000 && !reconnect && !clientDaylight.connected()) {
-    Serial.print("DEBUG: Attempting connect to daylight...");
-    lastTime = currentTime;
+  static int squirrelReconnectTimeout = 0;
+  if (!outboundSquirrel.connected() && millis() - squirrelReconnectTimeout > 2000) {
+    squirrelReconnectTimeout = millis();
+    Serial.print("Attempting connect to Squirrel\n");
     
-    clientSquirrel.print("ip daylight\n");
-    IPAddress daylightIp;
-    if (daylightIp.fromString(clientSquirrel.readStringUntil('\n')) && daylightIp != 0) {
-      Serial.print(" got IP...");
-      
-      //Persistent connect to daylight if we can ping
-      if (Ping.ping(daylightIp, 1)) {
-        Serial.print(" ping success\n");
-        TcpClientRegistrar::connectClient(clientDaylight, daylightIp, 23, "iocontrol", true);
-      } else {
-        Serial.print(" ping failed\n");
-      }
-    } else {
-      
-      Serial.print(" IP not found\n");
+    //Try to connect persistently to squirrel
+    if (outboundSquirrel.begin(IPAddress(192, 168, 3, 1), PORT_IO_TO_SQUIRREL)) {
+      Serial.print("Successfully connected to Squirrel\n");
     }
   }
+  
+  //Only connect to client when we are successfully connected to server
+  //    delay connect attempts to 2 per second
+  static uint32_t lastTimeDaylight = millis(), lastTimePressure = millis();
+  connectToSlave(outboundClientDaylight, "daylight", lastTimeDaylight, PORT_IO_TO_DAYLIGHT);
+  connectToSlave(outboundClientPressure, "pressure", lastTimePressure, PORT_IO_TO_PRESSURE);
+}
+
+void connectToSlave(UdpStream& client, const char* slaveName, uint32_t& lastTime, int port) {
+  client.setTimeout(500);
+  uint32_t currentTime = millis();
+  if (currentTime - lastTime > 3000 && !reconnect && !client.connected()) {
+    lastTime = currentTime;
+    
+    Serial.print("DEBUG: Attempting connect to ");
+    Serial.print(slaveName);
+    IPAddress ip;
+    
+    outboundSquirrel.printf("ip %s\n", slaveName);
+    outboundSquirrel.flush();
+    
+    String strIp = outboundSquirrel.readStringUntil('\n');
+    Serial.print(" Read Ip [ ");
+    Serial.print(strIp);
+    Serial.print("]");
+    ip.fromString(strIp);
+    Serial.print(" at IP ");
+    Serial.print(ip.toString());
+    
+    if (ip != IPAddress(0,0,0,0) && client.begin(ip, port))
+        Serial.println(" succeeded.");
+    else
+      Serial.println(" failed.");
+  }
+  client.setTimeout(1000);
+}
+
+bool collectSensorData(bool forceUpdate) {
+  static uint32_t lastSampleTime = 0, thisSampleTime = millis();
+  if (forceUpdate || thisSampleTime - lastSampleTime > 5) {
+    // Collect data from input pins
+    uint32_t pinValues = ioChip.readAll(PCF_CHIP_SELECT);
+    uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
+    audioLevel = pin[PCF_PIN_AUDIO];
+    motionValue = pin[PCF_PIN_MOTION];
+    
+    uint8_t tempNum;
+    String tempStr;
+    
+    // Collect pressure sensor data
+    if (outboundClientPressure.connected()) {
+      outboundClientPressure.print("g\n");
+      outboundClientPressure.flush();
+      tempStr = outboundClientPressure.readStringUntil('\n');
+      if (convertNumber(tempStr.c_str(), tempNum)) {
+        pressureLevel = tempNum;
+      }
+    }
+    
+    // Collect photosensor data
+    if (outboundClientDaylight.connected()) {
+      outboundClientDaylight.print("g\n");
+      outboundClientDaylight.flush();
+      tempStr = outboundClientDaylight.readStringUntil('\n');
+      if (convertNumber(tempStr.c_str(), tempNum)) {
+        photoValues = tempNum;
+      }
+    }
+    
+    return true;
+  }
+  return false;
+}
+
+void updateAudioMotionPowerOnOff() {
+  static uint8_t lastAudioLevel = 0, lastMaxLevel = 0;
+  static unsigned long lastClapThreshHoldTime = 0;
+  
+  avg.add(audioLevel);
+  
+  // Figure out if a clap has happened
+  if (clapEnabled) {
+    if (audioLevel <= lastAudioLevel) {
+      if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+Serial.print("Peak -\n");
+////////////////////////-----------------------------------------------------------------DEBUG ONLY
+        if (millis() - lastClapThreshHoldTime < 500) {
+          lastClapThreshHoldTime = 0;
+          OnDoubleClap();
+        } else {
+          lastClapThreshHoldTime = millis();
+        }
+        lastMaxLevel = -1;
+        Serial.println("-- Down Peak --");
+      }
+      lastMaxLevel = 0;
+    } else {
+      lastMaxLevel = audioLevel;
+    }
+  }
+  
+  // Update old audio value
+  lastAudioLevel = audioLevel;
+  
+  // Collect motion sensor data
+  if (motionEnabled) {
+    if (motionValue > MOTION_THRESHHOLD) {
+      // Motion detected
+      if (outputMode == MODE_OFF) {
+        setPower(POWER_ON);
+      }
+      lastMotionTime = millis();
+    } else if (millis() - lastMotionTime > motionTimeout * 1000) {
+      setPower(POWER_OFF);
+      lastMotionTime = millis();
+    }
+  }
+}
+
+/**
+ * Subtracts the brightness value from the inputed value if the pressure is enabled. Insures
+ * that the returned value is non-negative and not wraped if a unsigned value is entered.
+ */
+uint8_t valueWithBrightness(uint8_t val) {
+  if (pressureLevel < PRESSURE_THRESHHOLD) {
+    if (brightnessAuto)
+      return val / 50;
+    else
+      return val /= pressureLevel;
+  }
+  
+  return val;
+}
+
+/**
+ * Converts a string which contains a base 10 number to
+ * to an integer of the supplied type.
+ *
+ * return   true of the supplied value can be held by the type {@code T} and the
+ *          intirety of the supplied value is a valid integer.
+ */
+bool convertNumber(const char* strNum, uint8_t& numOut) {
+  char* numEnd;
+  long int num = strtol( strNum, &numEnd, 10 );
+  numOut = static_cast<uint8_t>(num);
+  return ( *strNum != 0 && num == numOut && numEnd != 0 && *numEnd == '\0');
 }
 
 /**
  * Provides a way to turn the lumen nodes on and off while managing the previous
  * state information for you.
  */
+int lastOutputMode;
 void setPower(PowerChangeState powerState) {
-  static int lastOutputMode;
   static bool lastMotionEnabled;
   bool toggleMotion = false; // Insure motion detector doesn't wake up clapp sleep 
   
@@ -444,29 +503,51 @@ void setPower(PowerChangeState powerState) {
       motionEnabled = lastMotionEnabled;
   }
 
-  Serial.printf("Power set to %s\n", outputMode == MODE_OFF ? "OFF" : "ON");
+  Serial.printf("DEBUG: Power set to %s\n", outputMode == MODE_OFF ? "OFF" : "ON");
 }
 
 /**
  * Changes the saved color channels that will be sent to the bulbs when the color mode is used.
  */
-void onCommandSetColor(Stream& reply, int argc, const char** argv) {  
-  if (argc == 1 && strcmp(argv[0], "auto") == 0)
-    colorAuto = true;
+void onCommandSetColor(Stream& reply, int argc, const char** argv) { 
+  bool success = false;
+  uint8_t r, g, b;
+  
+  if (argc == 1)
+    if (strcmp(argv[0], "auto") == 0) {
+      colorAuto = true;
+      success = true;
+    } else {
+      reply.print("Invalid argument value\n");
+    }
+  
   else if (argc == 3) {
-    colorAuto = false;
-    colorRed   = (uint8_t)atoi(argv[0]);
-    colorGreen = (uint8_t)atoi(argv[1]);
-    colorBlue  = (uint8_t)atoi(argv[2]);
+    if (convertNumber(argv[0], r) &&
+        convertNumber(argv[0], g) &&
+        convertNumber(argv[0], b))
+    {
+      colorAuto = false;
+      colorRed   = r;
+      colorGreen = g;
+      colorBlue  = b;
+      success = true;
+      
+    } else {
+      reply.print("Invalid argument value\n");
+    }
   } else {
-    reply.print("ER\n");
-    return;
+    reply.print("Invalid number of arguments\n");
   }
   
-  if (outputMode != MODE_OFF)
-    outputMode = MODE_COLOR;
-  
-  reply.printf("OK\n");
+  if (success) {
+    if (outputMode == MODE_OFF)
+      lastOutputMode = MODE_COLOR;
+    else
+      outputMode = MODE_COLOR;
+    
+    reply.printf("OK\n");
+  }
+  reply.flush();
 }
 
 /**
@@ -477,31 +558,44 @@ void onCommandGetColor(Stream& reply, int argc, const char** argv) {
     reply.printf("color auto\n");
   else
     reply.printf("%i %i %i\n", colorRed, colorGreen, colorBlue);
+  
+  reply.flush();
 }
 
 /**
  * Changes the saved color temperature that will be sent to the bulbs when the temperature mode is used.
  */
 void onCommandSetTemp(Stream& reply, int argc, const char** argv) {
+  bool success = false;
+  uint8_t t;
+  
   if (argc == 1) {
-    if (strcmp(argv[0], "auto") == 0)
+    if (strcmp(argv[0], "auto") == 0) {
       tempAuto = true;
-    else if (strcmp(argv[0], "on") == 0 && !tempAuto)
-      if (temperature == 0)
-        temperature = 50;
-    else {
+      success = true;
+    } else if (strcmp(argv[0], "on") == 0) {
+      success = true;
+    } else if (convertNumber(argv[0], t)) {
       tempAuto = false;
-      temperature = (uint8_t)atoi(argv[0]);
+      temperature = t;
+      success = true;
+    } else {
+      reply.print("Invalid argument value\n");
     }
   } else {
-    reply.print("ER\n");
-    return;
+    reply.print("Invalid number of arguments\n");
   }
   
-  if (outputMode != MODE_OFF)
-    outputMode = MODE_TEMP;
+  if (success) {
+    reply.print("OK\n");
+    
+    if (outputMode == MODE_OFF)
+      lastOutputMode = MODE_TEMP;
+    else
+      outputMode = MODE_TEMP;
+  }
   
-  reply.printf("OK\n");
+  reply.flush();
 }
 
 /**
@@ -510,9 +604,11 @@ void onCommandSetTemp(Stream& reply, int argc, const char** argv) {
  */
 void onCommandGetTemp(Stream& reply, int argc, const char** argv) {
   if (tempAuto)
-    reply.printf("%i\n", temperature);
+    reply.print("auto\n");
   else
-    reply.printf("OFF\n");
+    reply.printf("%i\n", temperature);
+  
+  reply.flush();
 }
 
 /**
@@ -520,30 +616,42 @@ void onCommandGetTemp(Stream& reply, int argc, const char** argv) {
  * Sets the level of dimming if the pressure sensor is tripped and enabled.
  */
 void onCommandSetBrightness(Stream& reply, int argc, const char** argv) {
+  bool success = false;
+  uint8_t b;
   if (argc == 1) {
-    if (strcmp(argv[0], "off") == 0)
-      pressureDimOn = false;
-    else {
-      pressureDimValue = (uint8_t)atoi(argv[0]);
-      pressureDimOn = pressureDimValue <= 0;
+    if (strcmp(argv[0], "auto") == 0) {
+      brightnessAuto = true;
+      success = true;
+    } else if (strcmp(argv[0], "on") == 0) {
+      success = true;
+    } else if (convertNumber(argv[0], b)) {
+      brightnessAuto = false;
+      brightness = b;
+      success = true;
+    } else {
+      reply.print("Invalid argument value\n");
     }
   } else {
-    reply.print("ER\n");
-    return;
+    reply.print("Invalid Mode\n");
   }
   
-  reply.printf("OK\n");
+  if (success)
+    reply.print("OK\n");
+  
+  reply.flush();
 }
 
 /**
- * Returns OFF if the brightness is disabled, else it returnes the level
+ * Returns auto if the brightness is disabled, else it returnes the level
  * that the brightness will be dimmed.
  */
 void onCommandGetBrightness(Stream& reply, int argc, const char** argv) {
-  if (pressureDimOn)
-    reply.printf("%i\n", pressureDimValue);
+  if (brightnessAuto)
+    reply.print("auto\n");
   else
-    reply.printf("OFF\n");
+    reply.printf("%i\n", brightness);
+  
+  reply.flush();
 }
 
 /**
@@ -554,12 +662,13 @@ void onCommandSetClap(Stream& reply, int argc, const char** argv) {
     clapEnabled = false;
   else if (argc == 1 && strcmp(argv[0], "on") == 0)
     clapEnabled = true;
-  else {
-    reply.print("ER\n");
-    return;
-  }
+  else if (argc == 1) 
+    reply.print("Invalid argument value\n");
+  else
+    reply.print("Invalid number of arguments\n");
   
   reply.printf("OK\n");
+  reply.flush();
 }
 
 /**
@@ -568,22 +677,34 @@ void onCommandSetClap(Stream& reply, int argc, const char** argv) {
  */
 void onCommandGetClap(Stream& reply, int argc, const char** argv) {
   reply.printf("%s\n", clapEnabled ? "ON" : "OFF");
+  reply.flush();
 }
 
 /**
  * Turns the system ON or OFF 
  */
 void onCommandSetPower(Stream& reply, int argc, const char** argv) {
-  if (argc == 1 && strcmp(argv[0], "off") == 0) {
-    setPower(POWER_OFF);
-  } else if (argc == 1 && strcmp(argv[0], "on") == 0) {
-    setPower(POWER_ON);
+  bool success = false;
+  
+  if (argc == 1) {
+    if (strcmp(argv[0], "off") == 0) {
+      setPower(POWER_OFF);
+      success = true;
+    } else if (strcmp(argv[0], "on") == 0) {
+      setPower(POWER_ON);
+      success = true;
+    } else {
+      reply.print("Invalid argument value\n");
+    }
   } else {
-    reply.print("ER\n");
-    return;
+    reply.print("Invalid number of arguments\n");
   }
   
-  reply.printf("OK\n");
+  if (success) {
+    reply.print("Success\n");
+  }
+  
+  reply.flush();
 }
 
 /**
@@ -592,6 +713,7 @@ void onCommandSetPower(Stream& reply, int argc, const char** argv) {
  */
 void onCommandGetPower(Stream& reply, int argc, const char** argv) {
   reply.printf("%s\n", outputMode != POWER_OFF ? "ON" : "OFF");
+  reply.flush();
 }
 
 /**
@@ -599,22 +721,32 @@ void onCommandGetPower(Stream& reply, int argc, const char** argv) {
  * a set amount of time. Allows the amount of time to be set.
  */
 void onCommandSetMotion(Stream& reply, int argc, const char** argv) {
+  bool success = false;
+  uint8_t m;
+  
   if (argc == 1) {
-    if (strcmp(argv[0], "off") == 0)
+    if (strcmp(argv[0], "off") == 0) {
       motionEnabled = false;
-    else if (strcmp(argv[0], "on") == 0)
+      success = true;
+    } else if (strcmp(argv[0], "on") == 0) {
       motionEnabled = true;
-    else {
-      motionTimeout = (uint8_t)atoi(argv[0]);
+      success = true;
+    } else if (convertNumber(argv[0], m)) {
+      motionTimeout = m;
       lastMotionTime = millis();
       motionEnabled = true;
+      success = true;
+    } else {
+      reply.print("Invalid argument value\n");
     }
   } else {
-    reply.print("ER\n");
-    return;
+    reply.print("Invalid number of arguments\n");
   }
   
-  reply.printf("OK\n");
+  if (success)
+    reply.printf("OK\n");
+  
+  reply.flush();
 }
 
 /**
@@ -624,7 +756,9 @@ void onCommandGetMotion(Stream& reply, int argc, const char** argv) {
   if (motionEnabled)
     reply.printf("%i\n", motionTimeout);
   else
-    reply.printf("OFF\n");
+    reply.print("OFF\n");
+  
+  reply.flush();
 }
 
 /**
@@ -633,12 +767,13 @@ void onCommandGetMotion(Stream& reply, int argc, const char** argv) {
  */
 void onCommandSetListen(Stream& reply, int argc, const char** argv) {
   if (outputMode != MODE_OFF) {
-    reply.printf("OK\n");
     outputMode = MODE_LISTEN;
-    return;
+    reply.printf("OK\n");
+  } else {
+    reply.print("Power is off\n");
   }
   
-  reply.print("ER\n");
+  reply.flush();
 }
 
 /**
@@ -646,7 +781,7 @@ void onCommandSetListen(Stream& reply, int argc, const char** argv) {
  * “MODE_[modename]”, where [modename] is all caps.
  */
 void onCommandGetMode(Stream& reply, int argc, const char** argv) {
-  char* modeName = "ER\n";
+  char* modeName = "Invalid Mode\n";
   switch (outputMode) {
     case MODE_COLOR: modeName = "MODE_COLOR\n"; break;
     case MODE_TEMP: modeName = "MODE_TEMP\n"; break;
@@ -656,39 +791,25 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
   }
   
   reply.print(modeName);
+  reply.flush();
 }
 
 /**
  * Returns the data from all of the connected sensors in one big block.
  */
 void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
-  bool pOn = false, dOn = false;
-  
-  uint8_t aLevel = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_AUDIO);
-  uint8_t mValue = ioChip.read(PCF_CHIP_SELECT, PCF_PIN_MOTION);
-  uint8_t pLevel, photoVal;
-  
-  // Collect pressure sensor data
-  if (clientPressure.connected()) {
-    pOn = true;
-    clientPressure.print("g");
-    pLevel = (uint8_t) clientPressure.readStringUntil('\n').toInt();
-  }
-  
-  // Collect photosensor data
-  if (clientDaylight.connected()) {
-    dOn = true;
-    clientDaylight.print("g");
-    photoVal = (uint8_t) clientDaylight.readStringUntil('\n').toInt();
-  }
-  
-  String strPressure(pLevel);
-  String strPhotoVal(photoVal);
+  //Serial.println("A");
+  collectSensorData(true);
+  //Serial.println("B");
+  String strPressure(photoValues);
+  String strPhotoVal(audioLevel);
   
   reply.printf("Audio: %i\tMotion: %i\tPressure: %s\tPhotocell: %s\n",
-                aLevel, mValue,
-                (pOn ? strPressure.c_str() : "Not connected."),
-                (dOn ? strPhotoVal.c_str() : "Not connected."));
+                audioLevel, motionValue,
+                (outboundClientPressure.connected() ? strPressure.c_str() : "Not connected."),
+                (outboundClientDaylight.connected() ? strPhotoVal.c_str() : "Not connected."));
+  
+  reply.flush();
 }
 
 /**
