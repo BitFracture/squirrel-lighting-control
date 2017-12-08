@@ -97,7 +97,7 @@ static AverageTracker<uint8_t> avg(14);
 bool motionEnabled  = false; //Can clap trigger power state?
 bool clapEnabled  = false; //Can clap trigger power state?
 bool colorAuto    = false; //Is color mode set to auto hue cycle?
-bool tempAuto     = false; //Is temperature coming from light sensor?
+bool tempAuto     = true; //Is temperature coming from light sensor?
 
 const int CLAP_THRESHHOLD = 10; // The peak noise level of a clap.
 
@@ -230,9 +230,9 @@ void loop() {
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
       if (tempAuto)
-        sprintf(toSend, "t %i\n", photoLevel, brightness);
+        sprintf(toSend, "t %i %i\n", photoLevel, valueWithBrightness(255));
       else
-        sprintf(toSend, "t %i\n", temperature, brightness);
+        sprintf(toSend, "t %i %i\n", temperature, valueWithBrightness(255));
     }
 
     //Output audio reaction
@@ -380,7 +380,7 @@ bool collectSensorData(bool forceUpdate) {
     adcSampleTime = millis();
   }
   
-  if (forceUpdate || currentTime - pressureLightSampleTime > 1000) {
+  if (forceUpdate || currentTime - pressureLightSampleTime > 100) {
     uint8_t tempNum;
     String tempStr;
     
@@ -421,7 +421,7 @@ void updateAudioMotionPowerOnOff() {
   avg.add(audioLevel);
   
   // Figure out if a clap has happened
-  if (clapEnabled) {
+  if (clapEnabled && outputMode != MODE_LISTEN) {
     if (audioLevel <= lastAudioLevel) {
       if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
         if (millis() - lastClapThreshHoldTime < 500) {
@@ -461,14 +461,13 @@ void updateAudioMotionPowerOnOff() {
  * that the returned value is non-negative and not wraped if a unsigned value is entered.
  */
 uint8_t valueWithBrightness(uint8_t val) {
-  if (pressureLevel < PRESSURE_THRESHHOLD) {
-    if (brightnessAuto)
+  if (brightnessAuto)
+    if (pressureLevel < PRESSURE_THRESHHOLD) // Pressure sensor 
       return val / 2;
     else
-      return val = (val * brightness) / 255;
-  }
+      return val;
   
-  return val;
+  return val = (val * brightness) / 255;
 }
 
 /**
@@ -809,12 +808,45 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
  * Returns the data from all of the connected sensors in one big block.
  */
 void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
-  // collectSensorData(true);
-  String strPressure(pressureLevel);
-  String strPhotoVal(photoLevel);
+  collectSensorData(true);
+  String strPressure(pressureLevel < PRESSURE_THRESHHOLD ? "PRESSED" : "RELEASED");
+  strPressure += " {"; 
+  strPressure += pressureLevel;
+  strPressure += "}";
   
-  reply.printf("Audio: %i\tMotion: %i\tPressure: %s\tPhotocell: %s\n",
-                audioLevel, motionValue,
+  String strPhotoVal;
+  switch (photoLevel / 86) {
+    case 0:
+      strPhotoVal += "DARK";
+    case 1:
+      strPhotoVal += "DIM";
+    default:
+      strPhotoVal += "BRIGHT";
+  }
+  strPhotoVal += " {"; 
+  strPhotoVal += photoLevel;
+  strPhotoVal += "}";
+  
+  String strAudio;
+  int audioDiff = audioLevel - avg.average();
+  if (audioDiff > 1) {
+    strAudio = "LOUD";
+  } else if (audioDiff < -1) {
+    strAudio = "QUIET";
+  } else {
+    strAudio = "NORMAL";
+  }
+  strAudio += " {"; 
+  strAudio += audioLevel;
+  strAudio += "}";
+  
+  String strMotion(motionValue > MOTION_THRESHHOLD ? "ACTIVE" : "STANDBY");
+  strMotion += " {"; 
+  strMotion += motionValue;
+  strMotion += "}";
+  
+  reply.printf("Audio: %s    Motion: %s    Pressure: %s    Photocell: %s\n",
+                strAudio.c_str(), strMotion.c_str(),
                 (outboundClientPressure.connected() ? strPressure.c_str() : "Not connected."),
                 (outboundClientDaylight.connected() ? strPhotoVal.c_str() : "Not connected."));
   
