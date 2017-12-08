@@ -77,7 +77,7 @@ uint8_t temperature = 0;
 //Pressure sensor
 const int PRESSURE_THRESHHOLD = 200; // Will register as being pressed if sensor value (pulled high) is under this value.
 static uint8_t pressureLevel = 255; // No pressure
-bool brightnessAuto = false; //Dim lights when the user is on sensor.
+bool brightnessAuto = true; //Dim lights when the user is on sensor.
 uint8_t brightness = 0;
 
 //Motion detector
@@ -149,7 +149,6 @@ void setup() {
   listenSocket.begin();
 ////////////////////////-----------------------------------------------------------------DEBUG ONLY
 }
-
 
 /**
  * Program main loop
@@ -231,9 +230,9 @@ void loop() {
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
       if (tempAuto)
-        sprintf(toSend, "t %i\n", valueWithBrightness(photoLevel));
+        sprintf(toSend, "t %i\n", photoLevel, brightness);
       else
-        sprintf(toSend, "t %i\n", valueWithBrightness(temperature));
+        sprintf(toSend, "t %i\n", temperature, brightness);
     }
 
     //Output audio reaction
@@ -333,6 +332,9 @@ void handleReconnect() {
   connectToSlave(outboundClientPressure, "pressure", lastTimePressure, PORT_IO_TO_PRESSURE);
 }
 
+/**
+ * 
+ */
 void connectToSlave(UdpStream& client, const char* slaveName, uint32_t& lastTime, int port) {
   client.setTimeout(500);
   uint32_t currentTime = millis();
@@ -409,6 +411,9 @@ bool collectSensorData(bool forceUpdate) {
   return readData;
 }
 
+/**
+ * 
+ */
 void updateAudioMotionPowerOnOff() {
   static uint8_t lastAudioLevel = 0, lastMaxLevel = 0;
   static unsigned long lastClapThreshHoldTime = 0;
@@ -419,9 +424,6 @@ void updateAudioMotionPowerOnOff() {
   if (clapEnabled) {
     if (audioLevel <= lastAudioLevel) {
       if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-Serial.print("Peak -\n");
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
         if (millis() - lastClapThreshHoldTime < 500) {
           lastClapThreshHoldTime = 0;
           OnDoubleClap();
@@ -429,7 +431,6 @@ Serial.print("Peak -\n");
           lastClapThreshHoldTime = millis();
         }
         lastMaxLevel = -1;
-        Serial.println("-- Down Peak --");
       }
       lastMaxLevel = 0;
     } else {
@@ -462,11 +463,9 @@ Serial.print("Peak -\n");
 uint8_t valueWithBrightness(uint8_t val) {
   if (pressureLevel < PRESSURE_THRESHHOLD) {
     if (brightnessAuto)
-      return val / 50;
-    if (pressureLevel == 0)
-      return 0;
+      return val / 2;
     else
-      return val /= pressureLevel;
+      return val = (val * brightness) / 255;
   }
   
   return val;
@@ -810,7 +809,7 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
  * Returns the data from all of the connected sensors in one big block.
  */
 void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
-  collectSensorData(true);
+  // collectSensorData(true);
   String strPressure(pressureLevel);
   String strPhotoVal(photoLevel);
   
