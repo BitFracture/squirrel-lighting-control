@@ -3,6 +3,7 @@ package com.squirrels.lightingcontroller;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.graphics.Color;
+import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.v7.app.AppCompatActivity;
@@ -16,6 +17,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.squirrels.lightingcontroller.NetInterface.RunnableWithData;
+
+import static com.squirrels.lightingcontroller.R.id.btnClapIsOn;
+import static com.squirrels.lightingcontroller.R.id.btnIsOn;
+import static com.squirrels.lightingcontroller.R.id.btnListenIsOn;
+import static com.squirrels.lightingcontroller.R.id.btnSetMotionOn;
+import static com.squirrels.lightingcontroller.R.id.motionLevel;
 
 public class MainActivity extends AppCompatActivity {
     static int iCount = 0;
@@ -43,10 +50,110 @@ public class MainActivity extends AppCompatActivity {
         getComponentName();
 
         txtLog = (TextView) findViewById(R.id.txtLog);
+        final Button btnOn = (Button) findViewById(btnIsOn);
+        btnOn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                btnOn.setEnabled(false);
+                MainActivity.Print("power " + (!btnOn.isActivated() ? "off" : "on"));
+                NetInterface.sendAndRecv(new String("power " + (!btnOn.isActivated() ? "off" : "on") + "\n"),
+                    new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                        @Override
+                        public void run() {
+                            if (data == null) {
+                                Toast.makeText(getApplicationContext(),
+                                        ERROR_NOT_CONNECTED,
+                                        Toast.LENGTH_SHORT).show();
 
+                            } else if (!data.first) {
+                                Toast.makeText(getApplicationContext(),
+                                        ERROR_DATA_NOT_SENT,
+                                        Toast.LENGTH_SHORT).show();
 
-        Print((savedInstanceState == null)? "True" : "False");
-        Print("" + (iCount++));
+                                MainActivity.Print("Error Sending Data");
+                            } else {
+                                if (data.second == null) {
+                                    MainActivity.Print("No Set Power Auto Ack Received");
+                                } else {
+                                    MainActivity.Print("Power Auto Ack: " + data.toString());
+                                }
+                            }
+
+                            btnOn.setEnabled(true);
+                        }
+                    });
+            }
+        });
+
+        final Button btnClapOn = (Button) findViewById(btnClapIsOn);
+        btnClapOn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                btnClapOn.setEnabled(false);
+                MainActivity.Print("clap " + (!btnClapOn.isActivated() ? "on" : "off"));
+                NetInterface.sendAndRecv(new String("clap " + (!btnClapOn.isActivated() ? "on" : "off") + "\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Set Clap Auto Ack Received");
+                                    } else {
+                                        MainActivity.Print("Clap Auto Ack: " + data.toString());
+                                    }
+                                }
+
+                                btnClapOn.setEnabled(true);
+                            }
+                        });
+            }
+        });
+
+        final Button btnListenOn = (Button) findViewById(btnListenIsOn);
+        btnListenOn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                btnListenOn.setEnabled(false);
+                MainActivity.Print("listen");
+                NetInterface.sendAndRecv(new String("listen\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Set Listen Ack Received");
+                                    } else {
+                                        MainActivity.Print("Listen Ack: " + data.toString());
+                                    }
+                                }
+
+                                btnOn.setEnabled(true);
+                            }
+                        });
+            }
+        });
 
         final TextView txtConnected = (TextView) findViewById(R.id.connectionStatus);
         txtConnected.setEnabled(false);
@@ -56,9 +163,11 @@ public class MainActivity extends AppCompatActivity {
                 if ("true".equals(data)) {
                     txtConnected.setText("Connected");
                     txtConnected.setTextColor(Color.BLACK);
+                    btnOn.setEnabled(true);
                 } else {
                     txtConnected.setText("Not connected");
                     txtConnected.setTextColor(Color.RED);
+                    btnOn.setText("ON");
                 }
             }
         };
@@ -79,6 +188,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onStopTrackingTouch(SeekBar var1) {
+                MainActivity.Print("color " + sbRed.getProgress() + " " + sbGreen.getProgress() + " " + sbBlue.getProgress());
                 NetInterface.sendAndRecv(new String("color " + sbRed.getProgress() + " " + sbGreen.getProgress() + " " + sbBlue.getProgress() + "\n"), new RunnableWithData<android.util.Pair<Boolean, String>>() {
                     @Override
                     public void run() {
@@ -129,6 +239,7 @@ public class MainActivity extends AppCompatActivity {
         switchTempAuto.setOnClickListener(new Button.OnClickListener() {
             public void onClick(final View v) {
                 v.setEnabled(false);
+                MainActivity.Print("temp auto");
                 NetInterface.sendAndRecv(new String("temp auto\n"),
                         new RunnableWithData<android.util.Pair<Boolean, String>>() {
                             @Override
@@ -158,7 +269,46 @@ public class MainActivity extends AppCompatActivity {
                                 } else {
                                     switchTempAuto.setText(strAutoEnabled);
                                     tempLevel.setEnabled(true);
-                                    sendTemperature(tempLevel);
+                                }
+                                v.setEnabled(true);
+                            }
+                        });
+            }
+        });
+//        sendMotion
+        final Button switchMotionOn = (Button) findViewById(R.id.btnSetMotionOn);
+        switchMotionOn.setText(strAutoEnabled);
+        switchMotionOn.setOnClickListener(new Button.OnClickListener() {
+            public void onClick(final View v) {
+                v.setEnabled(false);
+                MainActivity.Print("motion " + (switchMotionOn.isActivated()? "off" : "on"));
+                NetInterface.sendAndRecv(new String("motion " + (switchMotionOn.isActivated()? "off" : "on") + "\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Set Temp Auto Ack Received");
+                                    } else {
+                                        MainActivity.Print("Temp Auto Ack: " + data.toString());
+                                    }
+                                }
+
+                                if (switchMotionOn.getText().equals(strAutoEnabled)) {
+                                    switchMotionOn.setText(strAutoDisable);
+                                } else {
+                                    switchMotionOn.setText(strAutoEnabled);
                                 }
                                 v.setEnabled(true);
                             }
@@ -166,12 +316,51 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        final SeekBar motionLevel = (SeekBar) findViewById(R.id.motionLevel);
+        motionLevel.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {}
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                MainActivity.Print("motion " + seekBar.getProgress());
+                NetInterface.sendAndRecv(new String("motion " + seekBar.getProgress() + "\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    switchMotionOn.setActivated(false);
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Motion Ack Recieved");
+                                    } else {
+                                        MainActivity.Print("Motion Ack: " + data.toString());
+                                    }
+                                }
+                            }
+                        });
+            }
+        });
 
         final Button switchColorAuto = (Button) findViewById(R.id.btnSetColorAuto);
         switchColorAuto.setText(strAutoEnabled);
         switchColorAuto.setOnClickListener(new Button.OnClickListener() {
             public void onClick(final View v) {
                 v.setEnabled(false);
+                MainActivity.Print("color auto");
                 NetInterface.sendAndRecv(new String("color auto\n"),
                         new RunnableWithData<android.util.Pair<Boolean, String>>() {
                             @Override
@@ -213,6 +402,93 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+        final Button switchBrightnessAuto = (Button) findViewById(R.id.btnSetBrightnessOn);
+        switchBrightnessAuto.setText(strAutoEnabled);
+        switchBrightnessAuto.setOnClickListener(new Button.OnClickListener() {
+            public void onClick(final View v) {
+                v.setEnabled(false);
+                MainActivity.Print("brightness auto");
+                NetInterface.sendAndRecv(new String("brightness auto\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Set Color Auto Ack Received");
+                                    } else {
+                                        MainActivity.Print("Color Auto Ack: " + data.toString());
+                                    }
+                                }
+
+                                if (switchBrightnessAuto.getText().equals(strAutoEnabled)) {
+                                    switchBrightnessAuto.setText(strAutoDisable);
+                                    sbRed.setEnabled(false);
+                                    sbGreen.setEnabled(false);
+                                    sbBlue.setEnabled(false);
+                                } else {
+                                    switchBrightnessAuto.setText(strAutoEnabled);
+                                    sbRed.setEnabled(true);
+                                    sbGreen.setEnabled(true);
+                                    sbBlue.setEnabled(true);
+                                    sbar.onStopTrackingTouch(sbRed);
+                                }
+                                v.setEnabled(true);
+                            }
+                        });
+            }
+        });
+
+        final SeekBar brightnesLevel = (SeekBar) findViewById(R.id.brightnessLevel);
+        motionLevel.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {}
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                MainActivity.Print("brightness " + seekBar.getProgress());
+                NetInterface.sendAndRecv(new String("brightness " + seekBar.getProgress() + "\n"),
+                        new RunnableWithData<android.util.Pair<Boolean, String>>() {
+                            @Override
+                            public void run() {
+                                if (data == null) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_NOT_CONNECTED,
+                                            Toast.LENGTH_SHORT).show();
+
+                                } else if (!data.first) {
+                                    Toast.makeText(getApplicationContext(),
+                                            ERROR_DATA_NOT_SENT,
+                                            Toast.LENGTH_SHORT).show();
+
+                                    MainActivity.Print("Error Sending Data");
+                                } else {
+                                    switchMotionOn.setActivated(false);
+                                    if (data.second == null) {
+                                        MainActivity.Print("No Brightness Ack Recieved");
+                                    } else {
+                                        MainActivity.Print("Brightness Ack: " + data.toString());
+                                    }
+                                }
+                            }
+                        });
+            }
+        });
+
         // sbRed.setOnSeekBarChangeListener();
         NetInterface.onConnectedStateChange.data = NetInterface.isConnected() ? "true" : "false";
         NetInterface.onConnectedStateChange.run();
@@ -220,6 +496,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     void  sendTemperature(SeekBar seekBar) {
+        MainActivity.Print("temp " + seekBar.getProgress());
         NetInterface.sendAndRecv(new String("temp " + seekBar.getProgress() + "\n"),
                 new RunnableWithData<android.util.Pair<Boolean, String>>() {
                     @Override
