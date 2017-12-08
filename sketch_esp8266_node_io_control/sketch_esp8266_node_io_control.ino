@@ -561,12 +561,12 @@ bool convertNumber(const char* strNum, uint8_t& numOut) {
  */
 int lastOutputMode;
 void setPower(PowerChangeState powerState) {
-  static bool lastMotionEnabled;
-  bool toggleMotion = false; // Insure motion detector doesn't wake up clapp sleep 
+  static bool lastMotionState, motionStateChangedOnLastCall = false;
+  
+  bool isClap = (powerState == POWER_TOGGLE); // Insure motion detector doesn't wake up clap sleep 
   
   // Turn toggle into the appropriate command
-  if (powerState == POWER_TOGGLE){
-    toggleMotion = true;
+  if (isClap) {
     powerState = (outputMode == MODE_OFF ? POWER_ON : POWER_OFF);
   }
   
@@ -575,13 +575,22 @@ void setPower(PowerChangeState powerState) {
     lastOutputMode = outputMode;
     outputMode = MODE_OFF;
     
-    if (toggleMotion)
-      lastMotionEnabled = motionEnabled;
+    if (isClap) {
+      lastMotionState = motionEnabled;
+      motionEnabled = false;
+      motionStateChangedOnLastCall = true;
+    }
   } else if (outputMode == MODE_OFF && powerState == POWER_ON) {
     outputMode = lastOutputMode;
     
-    if (toggleMotion)
-      motionEnabled = lastMotionEnabled;
+    if (motionStateChangedOnLastCall) {
+      motionStateChangedOnLastCall = false;
+      if (!motionEnabled) { // Don't restore state if the user turned on the motion
+        motionEnabled = lastMotionState;
+      }
+    }
+    
+    lastMotionTime = millis();
   }
 
   Serial.printf("DEBUG: Power set to %s\n", outputMode == MODE_OFF ? "OFF" : "ON");
