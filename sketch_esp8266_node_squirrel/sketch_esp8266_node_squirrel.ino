@@ -2,7 +2,7 @@
  * The Flying Squirrels: Squirrel Lighting Controller
  * Node:     1/Server
  * Hardware: ESP8266-01[S]
- * Purpose:  Interface user commands, act as wireless router.
+ * Purpose:  Interface user commands, act as wireless access point.
  * Author:   Erik W. Greif
  * Date:     2017-10-13
  */
@@ -38,7 +38,6 @@ const uint8_t MAX_AP_CLIENTS = 12;
 //TCP connection pointers
 WiFiClient* clientMobile    = NULL;
 WiFiClient* clientLaptop    = NULL;
-WiFiClient* clientIoControl = NULL;
 WiFiUDP clientRemoteDebug;
 UdpStream outboundIoControl;
 UdpStream inboundIoControl;
@@ -127,9 +126,8 @@ void setup() {
   //Register client IDs to respective pointers for auto connection handling
   clients.assign("laptop", &clientLaptop);
   clients.assign("mobile", &clientMobile);
-  clients.assign("iocontrol", &clientIoControl);
 
-  Serial.printf("Listening to IO Control, state is %i\n", inboundIoControl.begin(201));
+  Serial.printf("DEBUG: Listening to IO Control, state is %i\n", inboundIoControl.begin(201));
 }
 
 void loop() {
@@ -145,8 +143,6 @@ void loop() {
     mobileCmd.handle(*clientMobile);
   if (clientLaptop)
     mobileCmd.handle(*clientLaptop);
-  //if (clientIoControl)
-  //  ioCmd.handle(*clientIoControl);
   ioCmd.handle(inboundIoControl);
 
   handleHeartbeat();
@@ -164,10 +160,10 @@ void handleReconnect() {
   static int ioReconnectTimeout = 0;
   if (!outboundIoControl.connected() && millis() - ioReconnectTimeout > 2000) {
     ioReconnectTimeout = millis();
-    Serial.print("Attempting connect to IOControl\n");
+    Serial.print("DEBUG: Attempting connect to IOControl\n");
     
     if (outboundIoControl.begin(clients.findIp("iocontrol"), 200))
-      Serial.print("Successfully connected to IOControl\n");
+      Serial.print("DEBUG: Successfully connected to IOControl\n");
   }
 }
 
@@ -287,16 +283,39 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.print("/======================================\\\n");
   port.print("|       Squirrel Lighting Server       |\n");
   port.print("\\======================================/\n");
+  
   port.print("\n");
   port.print("User Command Help\n");
   port.print("\n");
-  port.print("> ip ............ Get IP by identity\n");
-  port.print("> identify ...... Get net identity\n");
-  port.print("> help .......... Command syntax\n");
-  port.print("> test-args ..... Test argument parser\n");
-  port.print("> set-timeout ... Millis to respond to\n");
-  port.print("                  connection commands\n");
+
+  port.print("color [R G B]/[auto]  Sets color or auto\n");
+  port.print("get-color ........... Gets last set color value\n");
+  port.print("temp [TTT]/[auto] ... Sets temp or daylight auto\n");
+  port.print("get-temp ............ Gets the last set temp value\n");
+  port.print("brightness [B]/[auto] Sets brightness level\n");
+  port.print("get-brightness ...... Gets the last set brightness\n");
+  port.print("clap on/off ......... Sets clap power control state\n");
+  port.print("get-clap ............ Gets last set clap state\n");
+  port.print("power on/off ........ Manually power on/off\n");
+  port.print("get-power ........... Get last set power state\n");
+  port.print("motion TTT/on/off ... Set motion timer\n");
+  port.print("get-motion .......... Gets motion state\n");
+  port.print("get-mode ............ Gets system mode\n");
+  port.print("listen .............. Enables audio react, disables clap\n");
+  port.print("get-debug ........... Gets all sensor data manually\n");
+  
   port.print("\n");
+  port.print("Advanced Command Help\n");
+  port.print("\n");
+  
+  port.print("ip .................. Get IP by identity\n");
+  port.print("identify ............ Get net identity\n");
+  port.print("help ................ Command syntax manual\n");
+  port.print("test-args ........... Test argument parser\n");
+  port.print("set-timeout ......... Connection command timeout\n");
+  port.print("get-stats ........... Get send/recv counters\n");
+  port.print("\n");
+  port.flush();
 }
 
 void commandIdentify(Stream& port, int argc, const char** argv) {

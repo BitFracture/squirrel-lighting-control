@@ -107,11 +107,12 @@ void handleReconnect() {
 
 
 void getTemperature(Stream& reply, int argc, const char** argv) {
-  static const int BUFFER_LEN = 5;
-  static char buffer[BUFFER_LEN];
-  sprintf(buffer, "%i\n", ioChip.read(0, 0));
-  reply.print
-  (buffer);
+  
+  uint32_t data = ioChip.readAll(0);
+  uint8_t* dataArray = (uint8_t*)&data;
+  
+  reply.printf("%i\n", dataArray[0]);
+  reply.flush();
 }
 
 
