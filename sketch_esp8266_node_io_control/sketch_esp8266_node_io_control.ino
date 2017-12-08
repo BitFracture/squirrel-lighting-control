@@ -520,9 +520,9 @@ void updateAudioMotionPowerOnOffColorFlip() {
         setPower(POWER_ON);
       }
       lastMotionTime = millis();
-    } else if (millis() - lastMotionTime > motionTimeout * 1000) {
+    } else if (outputMode != MODE_OFF && millis() - lastMotionTime > motionTimeout * 1000) {
       setPower(POWER_OFF);
-      lastMotionTime = millis();
+      //lastMotionTime = millis();
     }
   }
 }
