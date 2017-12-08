@@ -5,6 +5,8 @@
  * Purpose:  Allow controller to connect and set LED brightnesses
  * Author:   Erik W. Greif
  * Date:     2017-10-26
+ *
+ *
  */
 
 //ESP8266 libraries
@@ -77,7 +79,7 @@ uint8_t temperature = 0;
 //Pressure sensor
 const int PRESSURE_THRESHHOLD = 200; // Will register as being pressed if sensor value (pulled high) is under this value.
 static uint8_t pressureLevel = 255; // No pressure
-bool brightnessAuto = false; //Dim lights when the user is on sensor.
+bool brightnessAuto = true; //Dim lights when the user is on sensor.
 uint8_t brightness = 0;
 
 //Motion detector
@@ -87,17 +89,21 @@ int motionTimeout = 30;    //30 seconds to power off
 uint8_t motionValue = 0;
 
 //Photosensor
-uint8_t photoValues = 0;
+uint8_t photoLevel = 0;
 
 //Audio Sensor
 uint8_t audioLevel = 0;
 static AverageTracker<uint8_t> avg(14);
+uint8_t listenRed = 0;
+uint8_t listenGreen = 0;
+uint8_t listenBlue = 0;
+uint8_t listenHue = 0;
 
 //Mode Helpers
 bool motionEnabled  = false; //Can clap trigger power state?
 bool clapEnabled  = false; //Can clap trigger power state?
 bool colorAuto    = false; //Is color mode set to auto hue cycle?
-bool tempAuto     = false; //Is temperature coming from light sensor?
+bool tempAuto     = true; //Is temperature coming from light sensor?
 
 const int CLAP_THRESHHOLD = 10; // The peak noise level of a clap.
 
@@ -150,7 +156,6 @@ void setup() {
 ////////////////////////-----------------------------------------------------------------DEBUG ONLY
 }
 
-
 /**
  * Program main loop
  */
@@ -199,7 +204,7 @@ void loop() {
   }
   
   if (collectSensorData(false)) {
-    updateAudioMotionPowerOnOff();
+    updateAudioMotionPowerOnOffColorFlip();
   }
   
   // Changes outputs in a given time span
@@ -213,13 +218,10 @@ void loop() {
     //Output colors
     if (outputMode == MODE_COLOR) {
       if (colorAuto) {
-        rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-        gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-        bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+        hsvToRgb((millis() / 30) % 255, 255, valueWithBrightness(255),
+                                  listenRed, listenGreen, listenBlue);
         
-        sprintf(toSend, "c %i %i %i\n", valueWithBrightness(rLumen),
-                                        valueWithBrightness(gLumen),
-                                        valueWithBrightness(bLumen));
+        sprintf(toSend, "c %i %i %i\n", listenRed, listenGreen, listenBlue);
       }
       else {
         sprintf(toSend, "c %i %i %i\n", valueWithBrightness(colorRed),
@@ -231,14 +233,15 @@ void loop() {
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
       if (tempAuto)
-        sprintf(toSend, "t %i\n", valueWithBrightness(photoValues));
+        sprintf(toSend, "t %i %i\n", photoLevel, valueWithBrightness(255));
       else
-        sprintf(toSend, "t %i\n", valueWithBrightness(temperature));
+        sprintf(toSend, "t %i %i\n", temperature, valueWithBrightness(255));
     }
 
     //Output audio reaction
     else if (outputMode == MODE_LISTEN) {
-      sprintf(toSend, "c 0 0 0 %i 0\n", 0xff & (50 * audioLevel));
+      hsvToRgb(listenHue, 255, 255, listenRed, listenGreen, listenBlue);
+      sprintf(toSend, "c %i %i %i\n", listenRed, listenGreen, listenBlue);
     }
 
     //Bulb is off, output black
@@ -257,6 +260,48 @@ void loop() {
   }
   
   handleHeartbeat();
+}
+
+/**
+ * Note:
+ * The hsvToRgb functions was copied from "https://github.com/ratkins/RGBConverter/"
+ * with a free to use license.
+ *
+ * Converts an HSV color value to RGB. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
+ * Assumes h, s, and v are contained in the set [0, 1] and
+ * returns r, g, and b in the set [0, 255].
+ *
+ * @param   Number  h       The hue
+ * @param   Number  s       The saturation
+ * @param   Number  v       The value
+ * @return  Array           The RGB representation
+ */
+void hsvToRgb(uint8_t _h, uint8_t _s, uint8_t _v, uint8_t& _r, uint8_t& _g, uint8_t& _b) {
+    float h = (float) _h / 255.0f;
+    float s = (float) _s / 255.0f;
+    float v = (float) _v / 255.0f;
+    
+    float r, g, b;
+
+    int i = int(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    switch(i % 6){
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+
+    _r = r * 255;
+    _g = g * 255;
+    _b = b * 255;
 }
 
 /**
@@ -333,6 +378,9 @@ void handleReconnect() {
   connectToSlave(outboundClientPressure, "pressure", lastTimePressure, PORT_IO_TO_PRESSURE);
 }
 
+/**
+ * 
+ */
 void connectToSlave(UdpStream& client, const char* slaveName, uint32_t& lastTime, int port) {
   client.setTimeout(500);
   uint32_t currentTime = millis();
@@ -363,14 +411,22 @@ void connectToSlave(UdpStream& client, const char* slaveName, uint32_t& lastTime
 }
 
 bool collectSensorData(bool forceUpdate) {
-  static uint32_t lastSampleTime = 0, thisSampleTime = millis();
-  if (forceUpdate || thisSampleTime - lastSampleTime > 5) {
+  static uint32_t pressureLightSampleTime = millis(), adcSampleTime = millis(), currentTime;
+  currentTime = millis();
+  bool readData = false;
+  
+  if (forceUpdate || currentTime - adcSampleTime > 5) {
     // Collect data from input pins
     uint32_t pinValues = ioChip.readAll(PCF_CHIP_SELECT);
     uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
     audioLevel = pin[PCF_PIN_AUDIO];
     motionValue = pin[PCF_PIN_MOTION];
     
+    readData = true;
+    adcSampleTime = millis();
+  }
+  
+  if (forceUpdate || currentTime - pressureLightSampleTime > 100) {
     uint8_t tempNum;
     String tempStr;
     
@@ -390,37 +446,52 @@ bool collectSensorData(bool forceUpdate) {
       outboundClientDaylight.flush();
       tempStr = outboundClientDaylight.readStringUntil('\n');
       if (convertNumber(tempStr.c_str(), tempNum)) {
-        photoValues = tempNum;
+        photoLevel = tempNum;
       }
     }
     
-    return true;
+    readData = true;
+    pressureLightSampleTime = millis();
   }
-  return false;
+  
+  return readData;
 }
 
-void updateAudioMotionPowerOnOff() {
+/**
+ * 
+ */
+void updateAudioMotionPowerOnOffColorFlip() {
   static uint8_t lastAudioLevel = 0, lastMaxLevel = 0;
   static unsigned long lastClapThreshHoldTime = 0;
   
   avg.add(audioLevel);
   
   // Figure out if a clap has happened
-  if (clapEnabled) {
+  if (clapEnabled || outputMode == MODE_LISTEN) {
     if (audioLevel <= lastAudioLevel) {
-      if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-Serial.print("Peak -\n");
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-        if (millis() - lastClapThreshHoldTime < 500) {
-          lastClapThreshHoldTime = 0;
-          OnDoubleClap();
+      
+      
+        if (outputMode == MODE_LISTEN) {
+          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+            // Change Color Values
+            listenHue = random(0, 255);
+            lastMaxLevel = -1;
+          }
         } else {
-          lastClapThreshHoldTime = millis();
+          
+          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+              if (millis() - lastClapThreshHoldTime < 500) {
+                lastClapThreshHoldTime = 0;
+                OnDoubleClap();
+              } else {
+                lastClapThreshHoldTime = millis();
+              }
+            lastMaxLevel = -1;
+          }
+          
         }
-        lastMaxLevel = -1;
-        Serial.println("-- Down Peak --");
-      }
+      
+      
       lastMaxLevel = 0;
     } else {
       lastMaxLevel = audioLevel;
@@ -450,14 +521,13 @@ Serial.print("Peak -\n");
  * that the returned value is non-negative and not wraped if a unsigned value is entered.
  */
 uint8_t valueWithBrightness(uint8_t val) {
-  if (pressureLevel < PRESSURE_THRESHHOLD) {
-    if (brightnessAuto)
-      return val / 50;
+  if (brightnessAuto)
+    if (pressureLevel < PRESSURE_THRESHHOLD) // Pressure sensor 
+      return val / 2;
     else
-      return val /= pressureLevel;
-  }
+      return val;
   
-  return val;
+  return val = (val * brightness) / 255;
 }
 
 /**
@@ -523,8 +593,8 @@ void onCommandSetColor(Stream& reply, int argc, const char** argv) {
   
   else if (argc == 3) {
     if (convertNumber(argv[0], r) &&
-        convertNumber(argv[0], g) &&
-        convertNumber(argv[0], b))
+        convertNumber(argv[1], g) &&
+        convertNumber(argv[2], b))
     {
       colorAuto = false;
       colorRed   = r;
@@ -798,14 +868,45 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
  * Returns the data from all of the connected sensors in one big block.
  */
 void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
-  //Serial.println("A");
   collectSensorData(true);
-  //Serial.println("B");
-  String strPressure(photoValues);
-  String strPhotoVal(audioLevel);
+  String strPressure(pressureLevel < PRESSURE_THRESHHOLD ? "PRESSED" : "RELEASED");
+  strPressure += " {"; 
+  strPressure += pressureLevel;
+  strPressure += "}";
   
-  reply.printf("Audio: %i\tMotion: %i\tPressure: %s\tPhotocell: %s\n",
-                audioLevel, motionValue,
+  String strPhotoVal;
+  switch (photoLevel / 86) {
+    case 0:
+      strPhotoVal += "DARK";
+    case 1:
+      strPhotoVal += "DIM";
+    default:
+      strPhotoVal += "BRIGHT";
+  }
+  strPhotoVal += " {"; 
+  strPhotoVal += photoLevel;
+  strPhotoVal += "}";
+  
+  String strAudio;
+  int audioDiff = audioLevel - avg.average();
+  if (audioDiff > 1) {
+    strAudio = "LOUD";
+  } else if (audioDiff < -1) {
+    strAudio = "QUIET";
+  } else {
+    strAudio = "NORMAL";
+  }
+  strAudio += " {"; 
+  strAudio += audioLevel;
+  strAudio += "}";
+  
+  String strMotion(motionValue > MOTION_THRESHHOLD ? "ACTIVE" : "STANDBY");
+  strMotion += " {"; 
+  strMotion += motionValue;
+  strMotion += "}";
+  
+  reply.printf("Audio: %s    Motion: %s    Pressure: %s    Photocell: %s\n",
+                strAudio.c_str(), strMotion.c_str(),
                 (outboundClientPressure.connected() ? strPressure.c_str() : "Not connected."),
                 (outboundClientDaylight.connected() ? strPhotoVal.c_str() : "Not connected."));
   

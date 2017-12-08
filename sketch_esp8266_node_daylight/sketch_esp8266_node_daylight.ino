@@ -34,7 +34,6 @@ CommandInterpreter ioCmd;
 UdpStream inboundIoControl;
 Pcf8591 ioChip(&Wire);
 
-
 void setup() {
   Serial.begin(9600);
   delay(500);
@@ -49,7 +48,6 @@ void setup() {
   ioCmd.assign("g", getTemperature);
 }
 
-
 void loop() {
   //Do nothing until we are connected to the server
   handleReconnect();
@@ -60,7 +58,6 @@ void loop() {
 
   handleHeartbeat();
 }
-
 
 /**
  * Blinks the output LED at the given rate.
@@ -75,12 +72,10 @@ void handleHeartbeat() {
   }
 }
 
-
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
   reconnect = true;
 }
-
 
 void handleReconnect() {
   
@@ -104,7 +99,6 @@ void handleReconnect() {
     inboundIoControl.begin(300);
   }
 }
-
 
 void getTemperature(Stream& reply, int argc, const char** argv) {
   

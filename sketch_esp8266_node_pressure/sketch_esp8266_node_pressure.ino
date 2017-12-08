@@ -34,7 +34,6 @@ CommandInterpreter ioCmd;
 UdpStream inboundIoControl;
 Pcf8591 ioChip(&Wire);
 
-
 void setup() {
   Serial.begin(9600);
   delay(500);
@@ -48,7 +47,6 @@ void setup() {
 
   ioCmd.assign("g", getPressure);
 }
-
 
 void loop() {
 
@@ -76,12 +74,10 @@ void handleHeartbeat() {
   }
 }
 
-
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 
   reconnect = true;
 }
-
 
 void handleReconnect() {
   
@@ -106,12 +102,11 @@ void handleReconnect() {
   }
 }
 
-
 void getPressure(Stream& reply, int argc, const char** argv) {
-  static const int BUFFER_LEN = 5;
-  static char buffer[BUFFER_LEN];
-  sprintf(buffer, "%i\n", ioChip.read(0, 0));
-  reply.print(buffer);
+  uint32_t pinValues = ioChip.readAll(0);
+  uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
+  reply.printf("%i\n", pin[0]);
+  reply.flush();
 }
 
 
