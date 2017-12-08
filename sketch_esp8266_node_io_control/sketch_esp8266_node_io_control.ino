@@ -87,7 +87,7 @@ int motionTimeout = 30;    //30 seconds to power off
 uint8_t motionValue = 0;
 
 //Photosensor
-uint8_t photoValues = 0;
+uint8_t photoLevel = 0;
 
 //Audio Sensor
 uint8_t audioLevel = 0;
@@ -231,7 +231,7 @@ void loop() {
     //Output color temperature
     else if (outputMode == MODE_TEMP) {
       if (tempAuto)
-        sprintf(toSend, "t %i\n", valueWithBrightness(photoValues));
+        sprintf(toSend, "t %i\n", valueWithBrightness(photoLevel));
       else
         sprintf(toSend, "t %i\n", valueWithBrightness(temperature));
     }
@@ -363,14 +363,22 @@ void connectToSlave(UdpStream& client, const char* slaveName, uint32_t& lastTime
 }
 
 bool collectSensorData(bool forceUpdate) {
-  static uint32_t lastSampleTime = 0, thisSampleTime = millis();
-  if (forceUpdate || thisSampleTime - lastSampleTime > 5) {
+  static uint32_t pressureLightSampleTime = millis(), adcSampleTime = millis(), currentTime;
+  currentTime = millis();
+  bool readData = false;
+  
+  if (forceUpdate || currentTime - adcSampleTime > 5) {
     // Collect data from input pins
     uint32_t pinValues = ioChip.readAll(PCF_CHIP_SELECT);
     uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
     audioLevel = pin[PCF_PIN_AUDIO];
     motionValue = pin[PCF_PIN_MOTION];
     
+    readData = true;
+    adcSampleTime = millis();
+  }
+  
+  if (forceUpdate || currentTime - pressureLightSampleTime > 1000) {
     uint8_t tempNum;
     String tempStr;
     
@@ -390,13 +398,15 @@ bool collectSensorData(bool forceUpdate) {
       outboundClientDaylight.flush();
       tempStr = outboundClientDaylight.readStringUntil('\n');
       if (convertNumber(tempStr.c_str(), tempNum)) {
-        photoValues = tempNum;
+        photoLevel = tempNum;
       }
     }
     
-    return true;
+    readData = true;
+    pressureLightSampleTime = millis();
   }
-  return false;
+  
+  return readData;
 }
 
 void updateAudioMotionPowerOnOff() {
@@ -453,6 +463,8 @@ uint8_t valueWithBrightness(uint8_t val) {
   if (pressureLevel < PRESSURE_THRESHHOLD) {
     if (brightnessAuto)
       return val / 50;
+    if (pressureLevel == 0)
+      return 0;
     else
       return val /= pressureLevel;
   }
@@ -523,8 +535,8 @@ void onCommandSetColor(Stream& reply, int argc, const char** argv) {
   
   else if (argc == 3) {
     if (convertNumber(argv[0], r) &&
-        convertNumber(argv[0], g) &&
-        convertNumber(argv[0], b))
+        convertNumber(argv[1], g) &&
+        convertNumber(argv[2], b))
     {
       colorAuto = false;
       colorRed   = r;
@@ -798,11 +810,9 @@ void onCommandGetMode(Stream& reply, int argc, const char** argv) {
  * Returns the data from all of the connected sensors in one big block.
  */
 void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
-  //Serial.println("A");
   collectSensorData(true);
-  //Serial.println("B");
-  String strPressure(photoValues);
-  String strPhotoVal(audioLevel);
+  String strPressure(pressureLevel);
+  String strPhotoVal(photoLevel);
   
   reply.printf("Audio: %i\tMotion: %i\tPressure: %s\tPhotocell: %s\n",
                 audioLevel, motionValue,
