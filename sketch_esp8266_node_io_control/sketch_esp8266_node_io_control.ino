@@ -146,6 +146,7 @@ void setup() {
   squirrelCmd.assign("get-mode", onCommandGetMode);
   squirrelCmd.assign("listen", onCommandSetListen);
   squirrelCmd.assign("get-debug", onCommandGetDebug);
+  squirrelCmd.assign("drop-remote", onCommandDropRemote);
 }
 
 /**
@@ -930,6 +931,15 @@ void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
                 (outboundClientPressure.connected() ? strPressure.c_str() : "Not connected."),
                 (outboundClientDaylight.connected() ? strPhotoVal.c_str() : "Not connected."));
   
+  reply.flush();
+}
+
+void onCommandDropRemote(Stream& reply, int argc, const char** argv) {
+  outboundClientDaylight.stop();
+  outboundClientPressure.stop();
+  outboundSquirrel.stop();
+
+  reply.print("ok\n");
   reply.flush();
 }
 
