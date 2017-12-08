@@ -44,12 +44,6 @@ const int PORT_IO_TO_PRESSURE = 400;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
 
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-TcpClientRegistrar clients;
-WiFiServer listenSocket(900);
-WiFiClient* clientLaptop = NULL;
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-
 //Wireless nonsense
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
@@ -98,6 +92,9 @@ uint8_t listenRed = 0;
 uint8_t listenGreen = 0;
 uint8_t listenBlue = 0;
 uint8_t listenHue = 0;
+
+//Whether an audio peak occurred
+bool peakHappened = false;
 
 //Mode Helpers
 bool motionEnabled  = false; //Can clap trigger power state?
@@ -149,11 +146,6 @@ void setup() {
   squirrelCmd.assign("get-mode", onCommandGetMode);
   squirrelCmd.assign("listen", onCommandSetListen);
   squirrelCmd.assign("get-debug", onCommandGetDebug);
-  
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-  clients.assign("laptop", &clientLaptop);
-  listenSocket.begin();
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
 }
 
 /**
@@ -165,19 +157,9 @@ void loop() {
   
   //Do nothing until we are connected to the server
   handleReconnect();
-  
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-  clients.handle(listenSocket);
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
 
   //Handle commands
   squirrelCmd.handle(Serial);
-  
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-  if (clientLaptop && clientLaptop->connected())
-    squirrelCmd.handle(*clientLaptop);
-////////////////////////-----------------------------------------------------------------DEBUG ONLY
-  
   squirrelCmd.handle(inboundSquirrel);
   
   //Catch any discovery packets from lumen nodes ("d")
@@ -206,7 +188,11 @@ void loop() {
   if (collectSensorData(false)) {
     updateAudioMotionPowerOnOffColorFlip();
   }
-  
+
+  //Audio react state machine data
+  static int pulseBrightness = 255;
+  static bool pulseFalling = false;
+
   // Changes outputs in a given time span
   thisSendTime = millis();
   if (thisSendTime - lastSendTime > 32) {
@@ -237,10 +223,33 @@ void loop() {
       else
         sprintf(toSend, "t %i %i\n", temperature, valueWithBrightness(255));
     }
-
+    
     //Output audio reaction
     else if (outputMode == MODE_LISTEN) {
-      hsvToRgb(listenHue, 255, 255, listenRed, listenGreen, listenBlue);
+
+      //Pulse calculations
+      int pulseRate = 150;
+      if (pulseFalling && pulseBrightness > 0) {
+        pulseBrightness -= pulseRate;
+        if (pulseBrightness < 0) pulseBrightness = 0;
+      } 
+      if (!pulseFalling && pulseBrightness < 255) {
+        pulseBrightness += pulseRate;
+        if (pulseBrightness > 255) pulseBrightness = 255;
+
+        if (pulseBrightness == 255)
+          peakHappened = false;
+      }
+
+      //Pulse state machine
+      if (!pulseFalling && pulseBrightness == 255 && peakHappened) {
+        pulseFalling = true;
+      }
+      else if (pulseFalling && pulseBrightness == 0) {
+        pulseFalling = false;
+      }
+      
+      hsvToRgb(listenHue, 255, (uint8_t)pulseBrightness, listenRed, listenGreen, listenBlue);
       sprintf(toSend, "c %i %i %i\n", listenRed, listenGreen, listenBlue);
     }
 
@@ -466,16 +475,18 @@ void updateAudioMotionPowerOnOffColorFlip() {
   
   avg.add(audioLevel);
   
-  // Figure out if a clap has happened
+  //Figure out if a clap has happened
   if (clapEnabled || outputMode == MODE_LISTEN) {
+
     if (audioLevel <= lastAudioLevel) {
       
-      
         if (outputMode == MODE_LISTEN) {
-          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
-            // Change Color Values
+          if (!peakHappened && lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+            //Change Color Values
             listenHue = random(0, 255);
             lastMaxLevel = -1;
+
+            peakHappened = true;
           }
         } else {
           
