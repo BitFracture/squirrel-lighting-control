@@ -5,6 +5,8 @@
  * Purpose:  Allow controller to connect and set LED brightnesses
  * Author:   Erik W. Greif
  * Date:     2017-10-26
+ *
+ *
  */
 
 //ESP8266 libraries
@@ -92,6 +94,10 @@ uint8_t photoLevel = 0;
 //Audio Sensor
 uint8_t audioLevel = 0;
 static AverageTracker<uint8_t> avg(14);
+uint8_t listenRed = 0;
+uint8_t listenGreen = 0;
+uint8_t listenBlue = 0;
+uint8_t listenHue = 0;
 
 //Mode Helpers
 bool motionEnabled  = false; //Can clap trigger power state?
@@ -198,7 +204,7 @@ void loop() {
   }
   
   if (collectSensorData(false)) {
-    updateAudioMotionPowerOnOff();
+    updateAudioMotionPowerOnOffColorFlip();
   }
   
   // Changes outputs in a given time span
@@ -212,13 +218,10 @@ void loop() {
     //Output colors
     if (outputMode == MODE_COLOR) {
       if (colorAuto) {
-        rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-        gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-        bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+        hsvToRgb((millis() / 30) % 255, 255, valueWithBrightness(255),
+                                  listenRed, listenGreen, listenBlue);
         
-        sprintf(toSend, "c %i %i %i\n", valueWithBrightness(rLumen),
-                                        valueWithBrightness(gLumen),
-                                        valueWithBrightness(bLumen));
+        sprintf(toSend, "c %i %i %i\n", listenRed, listenGreen, listenBlue);
       }
       else {
         sprintf(toSend, "c %i %i %i\n", valueWithBrightness(colorRed),
@@ -237,7 +240,8 @@ void loop() {
 
     //Output audio reaction
     else if (outputMode == MODE_LISTEN) {
-      sprintf(toSend, "c 0 0 0 %i 0\n", 0xff & (50 * audioLevel));
+      hsvToRgb(listenHue, 255, 255, listenRed, listenGreen, listenBlue);
+      sprintf(toSend, "c %i %i %i\n", listenRed, listenGreen, listenBlue);
     }
 
     //Bulb is off, output black
@@ -256,6 +260,48 @@ void loop() {
   }
   
   handleHeartbeat();
+}
+
+/**
+ * Note:
+ * The hsvToRgb functions was copied from "https://github.com/ratkins/RGBConverter/"
+ * with a free to use license.
+ *
+ * Converts an HSV color value to RGB. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
+ * Assumes h, s, and v are contained in the set [0, 1] and
+ * returns r, g, and b in the set [0, 255].
+ *
+ * @param   Number  h       The hue
+ * @param   Number  s       The saturation
+ * @param   Number  v       The value
+ * @return  Array           The RGB representation
+ */
+void hsvToRgb(uint8_t _h, uint8_t _s, uint8_t _v, uint8_t& _r, uint8_t& _g, uint8_t& _b) {
+    float h = (float) _h / 255.0f;
+    float s = (float) _s / 255.0f;
+    float v = (float) _v / 255.0f;
+    
+    float r, g, b;
+
+    int i = int(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    switch(i % 6){
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+
+    _r = r * 255;
+    _g = g * 255;
+    _b = b * 255;
 }
 
 /**
@@ -414,24 +460,38 @@ bool collectSensorData(bool forceUpdate) {
 /**
  * 
  */
-void updateAudioMotionPowerOnOff() {
+void updateAudioMotionPowerOnOffColorFlip() {
   static uint8_t lastAudioLevel = 0, lastMaxLevel = 0;
   static unsigned long lastClapThreshHoldTime = 0;
   
   avg.add(audioLevel);
   
   // Figure out if a clap has happened
-  if (clapEnabled && outputMode != MODE_LISTEN) {
+  if (clapEnabled || outputMode == MODE_LISTEN) {
     if (audioLevel <= lastAudioLevel) {
-      if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
-        if (millis() - lastClapThreshHoldTime < 500) {
-          lastClapThreshHoldTime = 0;
-          OnDoubleClap();
+      
+      
+        if (outputMode == MODE_LISTEN) {
+          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+            // Change Color Values
+            listenHue = random(0, 255);
+            lastMaxLevel = -1;
+          }
         } else {
-          lastClapThreshHoldTime = millis();
+          
+          if (lastMaxLevel > avg.average() + CLAP_THRESHHOLD) {
+              if (millis() - lastClapThreshHoldTime < 500) {
+                lastClapThreshHoldTime = 0;
+                OnDoubleClap();
+              } else {
+                lastClapThreshHoldTime = millis();
+              }
+            lastMaxLevel = -1;
+          }
+          
         }
-        lastMaxLevel = -1;
-      }
+      
+      
       lastMaxLevel = 0;
     } else {
       lastMaxLevel = audioLevel;

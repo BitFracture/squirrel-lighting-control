@@ -103,7 +103,9 @@ void handleReconnect() {
 }
 
 void getPressure(Stream& reply, int argc, const char** argv) {
-  reply.printf("%i\n", ioChip.read(0, 0));
+  uint32_t pinValues = ioChip.readAll(0);
+  uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
+  reply.printf("%i\n", pin[0]);
   reply.flush();
 }
 
