@@ -3,7 +3,7 @@
  * Node:     Lumen0 (WiFi Light 0)
  * Hardware: ESP8266-01[S] and MY9291 LED Driver
  * Purpose:  Allow controller to connect and set LED brightnesses
- * Author:   Erik W. Greif
+ * Author:   Erik W. Greifb
  * Date:     2017-10-26
  */
 
@@ -26,8 +26,8 @@
 #include <CommandInterpreter.h>
 
 //Uncomment the hardware platform
-#define SONOFF_B1 0
-//#define THINKER_AILIGHT 1
+//#define SONOFF_B1 0
+#define THINKER_AILIGHT 1
 
 #ifdef SONOFF_B1
 const int LED_DATA_PIN = 12;
@@ -79,8 +79,8 @@ void setup() {
   delay(500);
   Serial.print("Initialized\n");
 
-  ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   ledDriver.setState(true);
+  ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
 
   //Set up the wireless
@@ -88,7 +88,7 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   //Assign some commands to the command controllers
-  serialCmd.assign("s", commandSetColors);
+  serialCmd.assign("c", commandSetColors);
   serialCmd.assign("t", commandSetTemp);
   serialCmd.assignDefault(commandUnknown);
   ioCmd = CommandInterpreter(serialCmd);
@@ -165,18 +165,20 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
 
   lastComTime = millis();
   
-  if (argc != 1) {
+  if (argc != 1 && argc != 2) {
     port.print("ER\n");
     return;
   }
 
   //The multiplier defines where we are from cool to warm
-  float multiplier = hexToByte<uint8_t>(argv[0]) / 255.0f;
+  float multiplier = (float)atoi(argv[0]) / 255.0f;
+  float brightness = argc == 2 ? (float)atoi(argv[1]) / 255.0f : 1.0f;
 
   for (int i = 0; i < 5; i ++) {
-    colors[i] = (uint8_t)((float)warmColor[i] + 
+    float channelRaw = ((float)warmColor[i] + 
                 ((float)coolColor[i] - 
                 (float)warmColor[i]) * multiplier);
+    colors[i] = (uint8_t)(channelRaw * brightness);
   }
 
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
@@ -191,33 +193,15 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     return;
   }
 
-  colors[0] = hexToByte<uint8_t>(argv[0]);
-  colors[1] = hexToByte<uint8_t>(argv[1]);
-  colors[2] = hexToByte<uint8_t>(argv[2]);
-  colors[3] = argc > 3 ? hexToByte<uint8_t>(argv[3]) : 0;
-  colors[4] = argc > 4 ? hexToByte<uint8_t>(argv[4]) : 0;
+  colors[0] = (uint8_t)atoi(argv[0]);
+  colors[1] = (uint8_t)atoi(argv[1]);
+  colors[2] = (uint8_t)atoi(argv[2]);
+  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
+  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 
   port.print("OK\n");
 }
 
-template <typename T> T hexToByte(const char* hexStr) {
-  T output = 0;
-  int numberOfBytes = strlen(hexStr);
-  for (int i = 0; i < numberOfBytes; i++) {
-    output <<= 4;
-    
-    if (hexStr[i] >= 'A' && hexStr[i] <= 'F')
-      output |= static_cast<uint8_t>((hexStr[i] - 'A') + 10);
-      
-    else if (hexStr[i] >= 'a' && hexStr[i] <= 'f')
-      output |= static_cast<uint8_t>((hexStr[i] - 'a') + 10);
-      
-    else if (hexStr[i] >= '1' && hexStr[i] <= '9')
-      output |= static_cast<uint8_t>(hexStr[i] - '0');
-  }
-  
-  return output;
-}
 

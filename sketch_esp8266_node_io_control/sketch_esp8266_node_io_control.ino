@@ -30,25 +30,39 @@ WiFiClient clientDaylight;
 WiFiUDP clientDiscover;
 WiFiUDP dataBroadcast;
 
+//Wireless nonsense
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
 long lastCheckTime = 0;
 
-const int MODE_MANUAL_HUE = 0;
-const int MODE_MANUAL_TEMP = 1;
-const int MODE_HUE = 2;
-const int MODE_AUDIO = 3;
-const int MODE_TEMP = 4;
+//Mode groups
+const int MODE_TEMP   = 0; //Temperature mode
+const int MODE_COLOR  = 1; //Color mode
+const int MODE_LISTEN = 2; //Audio listen mode
+const int MODE_OFF    = 3; //Lights set off
+const int MODE_SLEEP  = 4; //Light off, may be woken by motion
+const int MODE_YIELD  = 5; //Transmission to bulbs is disbled
 
+int outputMode = MODE_TEMP;
+int sleepingMode = MODE_TEMP;
+
+//Channel values
 uint8_t colorRed = 0;
 uint8_t colorGreen = 0;
 uint8_t colorBlue = 0;
 uint8_t temperature = 0;
-int outputMode = MODE_MANUAL_TEMP;
+uint8_t brightness = 0;
+
+//Mode metadata
+bool clapEnabled  = false; //Can clap trigger power state?
+int motionTimeout = 30;    //30 seconds to power off
+bool colorAuto    = false; //Is color mode set to auto hue cycle?
+bool tempAuto     = false; //Is temperature coming from light sensor?
 
 CommandInterpreter squirrelCmd;
 
+//Store discovered bulb IPs as they send discovery packets
 const int MAX_LUMEN_NODES = 16;
 IPAddress lumenNodes[MAX_LUMEN_NODES];
 
@@ -69,6 +83,8 @@ void setup() {
   squirrelCmd.assign("m", commandSetOutputMode);
   squirrelCmd.assign("c", commandSetColor);
   squirrelCmd.assign("t", commandSetTemp);
+  //squirrelCmd.assign("b", commandSetBrightness);
+  //squirrelCmd.assign("cl", commandSetClap);
 }
 
 void loop() {
@@ -118,53 +134,62 @@ void loop() {
     //Serial.print(level);
   }
 
-  //Send color data, rate limit to about 30FPS/PPS
+  //Limit the rate of data transmission
   thisSendTime = millis();
   if (thisSendTime - lastSendTime > 32) {
     lastSendTime = thisSendTime;
     
     //Construct command
-    char* toSend = "";
+    char toSend[32];
 
-    if (outputMode == MODE_HUE) {
-      toSend = "s 00 00 00\n";
-      rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
-      gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
-      bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
-      
-      byteToString(rLumen, toSend + 2);
-      byteToString(gLumen, toSend + 5);
-      byteToString(bLumen, toSend + 8);
-    }
-    else if (outputMode == MODE_AUDIO) {
-      toSend = "s 00 00 00 00\n";
-      byteToString(level, toSend + 11);
-    }
-    else if (outputMode == MODE_MANUAL_HUE) {
-      toSend = "s 00 00 00\n";
-      byteToString(colorRed,   toSend + 2);
-      byteToString(colorGreen, toSend + 5);
-      byteToString(colorBlue,  toSend + 8);
-    }
-    else if (outputMode == MODE_MANUAL_TEMP) {
-      toSend = "t 00\n";
-      byteToString(temperature, toSend + 2);
-    }
-    else if (outputMode == MODE_TEMP) {
-      toSend = "t 00\n";
-      
-      if (clientDaylight.connected()) {
-        clientDaylight.print("g\n");
-        uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
-        byteToString(sensorBrightness, toSend + 2);
+    //Output colors
+    if (outputMode == MODE_COLOR) {
+
+      if (colorAuto) {
+        rLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3    ) + 1.0f) * 127.0f);
+        gLumen = (uint8_t)((sin((millis() / 1000.0f) + 6.28f / 3 * 2) + 1.0f) * 127.0f);
+        bLumen = (uint8_t)((sin((millis() / 1000.0f) + 0            ) + 1.0f) * 127.0f);
+        
+        sprintf(toSend, "c %i %i %i\n", rLumen, gLumen, bLumen);
+      }
+      else {
+        sprintf(toSend, "c %i %i %i\n", colorRed, colorGreen, colorBlue);
       }
     }
-    
-    //Send the UDP update to each discovered node
-    for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
-      dataBroadcast.beginPacket(lumenNodes[i], 23);
-      dataBroadcast.write(toSend);
-      dataBroadcast.endPacket();
+
+    //Output audio reaction
+    else if (outputMode == MODE_LISTEN) {
+      
+      sprintf(toSend, "c 0 0 0 %i 0\n", level);
+    }
+
+    //Output color temperature
+    else if (outputMode == MODE_TEMP) {
+
+      if (tempAuto) {
+        if (clientDaylight.connected()) {
+          clientDaylight.print("g\n");
+          uint8_t sensorBrightness = (uint8_t)clientDaylight.readStringUntil('\n').toInt();
+          sprintf(toSend, "t %i\n", sensorBrightness);
+        }
+      }
+      elgse {
+        sprintf(toSend, "t %i\n", temperature);
+      }
+    }
+
+    //Bulb is off, output black
+    else if (outputMode == MODE_OFF || outputMode == MODE_SLEEP) {
+      sprintf(toSend, "c 0 0 0\n");
+    }
+
+    if (outputMode != MODE_YIELD) {
+      //Send the UDP update to each discovered node
+      for (int i = 0; i < MAX_LUMEN_NODES && lumenNodes[i] != 0; i++) {
+        dataBroadcast.beginPacket(lumenNodes[i], 23);
+        dataBroadcast.write(toSend);
+        dataBroadcast.endPacket();
+      }
     }
   }
 }
@@ -230,16 +255,14 @@ void commandSetOutputMode(Stream& reply, int argc, const char** argv) {
     return;
   }
 
-  if (argv[0][0] == '0')
-    outputMode = MODE_MANUAL_HUE;
-  else if (argv[0][0] == '1')
-    outputMode = MODE_MANUAL_TEMP;
-  else if (argv[0][0] == '2')
-    outputMode = MODE_HUE;
-  else if (argv[0][0] == '3')
-    outputMode = MODE_AUDIO;
-  else if (argv[0][0] == '4')
+  if (argv[0][0] == 'c')
+    outputMode = MODE_COLOR;
+  else if (argv[0][0] == 't')
     outputMode = MODE_TEMP;
+  else if (argv[0][0] == 'l')
+    outputMode = MODE_LISTEN;
+  else if (argv[0][0] == 'o')
+    outputMode = MODE_OFF;
   
   reply.print("OK\n");
 }
@@ -252,9 +275,9 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
   }
 
   if (argv[0][0] == 'a')
-    outputMode = MODE_TEMP;
+    tempAuto = true;
   else {
-    outputMode = MODE_MANUAL_TEMP;
+    tempAuto = false;
     temperature = (uint8_t)atoi(argv[0]);
   }
   
@@ -262,12 +285,12 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
 }
 
 void commandSetColor(Stream& reply, int argc, const char** argv) {
-
+  
   if (argc == 1 && argv[0][0] == 'a') {
-    outputMode = MODE_HUE;
+    colorAuto = true;
   }
   else if (argc == 3) {
-    outputMode = MODE_MANUAL_HUE;
+    colorAuto = false;
     colorRed   = (uint8_t)atoi(argv[0]);
     colorGreen = (uint8_t)atoi(argv[1]);
     colorBlue  = (uint8_t)atoi(argv[2]);
@@ -278,15 +301,5 @@ void commandSetColor(Stream& reply, int argc, const char** argv) {
   }
   
   reply.print("OK\n");
-}
-
-/**
- * Overwrites the first two characters with the hex equivalent of the byte given.
- */
-void byteToString(uint8_t toConvert, char* writeStart) { 
-  static char* charLookup = "0123456789ABCDEF";
-  
-  writeStart[1] = charLookup[ (toConvert       & 15)];
-  writeStart[0] = charLookup[((toConvert >> 4) & 15)];
 }
 
