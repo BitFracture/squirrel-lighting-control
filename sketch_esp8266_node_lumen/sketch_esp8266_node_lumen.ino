@@ -39,6 +39,9 @@ const int LED_CLCK_PIN = 15;
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 const IPAddress broadcastAddress(192, 168, 3, 255);
+const IPAddress serverAddress(   192, 168, 3, 1);
+const int DEBUG_PORT = 24;
+const int DATA_PORT = 23;
 
 //Our definition of "warm" varies from platform to platform... how to do this?
 #ifdef SONOFF_B1
@@ -64,9 +67,14 @@ bool reconnect = true;
 bool colorCycle = false;
 uint8_t colors[5];
 
+//Use for UDP send and receive
+const int PACKET_DATA_SIZE = 64;
+char packetData[PACKET_DATA_SIZE];
+
 WiFiEventHandler disconnectedEventHandler;
 
 void setup() {
+  WiFi.persistent(false);
   
   //Initial light data
   colors[0] = 0;
@@ -86,11 +94,11 @@ void setup() {
   //Set up the wireless
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("WiFi ready to connect\n");
 
   //Assign some commands to the command controllers
   serialCmd.assign("c", commandSetColors);
   serialCmd.assign("t", commandSetTemp);
-  serialCmd.assignDefault(commandUnknown);
   ioCmd = CommandInterpreter(serialCmd);
 }
 
@@ -109,7 +117,7 @@ void loop() {
   if (millis() - lastComTime > 5000) {
     
     //UDP Broadcast ourself!
-    broadcast.beginPacket(broadcastAddress, 23);
+    broadcast.beginPacket(broadcastAddress, DATA_PORT);
     broadcast.print("d"); //d = discover
     broadcast.endPacket();
 
@@ -124,6 +132,7 @@ void loop() {
 }
 
 void handleReconnect() {
+  
   while (reconnect) {
 
     //Close the UDP data socket
@@ -140,33 +149,62 @@ void handleReconnect() {
     Serial.print("Connected\n");
 
     //Open udp port for lumen data
-    clientIoControl.begin(23);
+    clientIoControl.begin(DATA_PORT);
     
     reconnect = false;
+    
+    //UDP Broadcast this reset debug terminal output
+    /*if (WiFi.localIP() == IPAddress(0,0,0,0)) {
 
-    //Cycle colors to show connected
-    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 0,   0,   0,   0,   0   });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) { 255, 255, 255, 255, 255 });
-    delay(200);
-    ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
+      Serial.println("IP is blank... aborting send");
+      reconnect = false;
+    }
+    else {
+    
+      sprintf(packetData, "debug \"Lumen node reset at %s\"\n", WiFi.localIP().toString().c_str());
+      sendDebug(&packetData[0]);
+    }*/
   }
 }
 
-void commandUnknown(Stream& port, int argc, const char** argv) {
-  port.print("ER\n");
-}
+/*void sendDebug(char* buff) {
+  
+  bool replied = false;
+
+  while (!replied) {
+    Serial.print("Sending debug packet...\n");
+    
+    //Send out debug data
+    broadcast.beginPacket(serverAddress, DEBUG_PORT);
+    broadcast.print(buff);
+    broadcast.endPacket();
+
+    //Get response from debug
+    broadcast.begin(broadcast.localPort());
+    int packetSize = 0;
+    uint32_t timeout = 2000; 
+    uint32_t timeStart = millis();
+    while (((packetSize = broadcast.parsePacket()) <= 0) && (millis() - timeStart) < timeout) {
+      delay(50);
+    }
+    if (packetSize > 0) {
+      int len = broadcast.read(&packetData[0], PACKET_DATA_SIZE);
+      packetData[len] = 0;
+      Serial.printf("Got response %s\n", &packetData[0]);
+      if (strcmp("OK\n", &packetData[0]) == 0)
+        replied = true;
+    }
+    broadcast.stop();
+  }
+  
+  //broadcast.stop();
+}*/
 
 void commandSetTemp(Stream& port, int argc, const char** argv) {
 
   lastComTime = millis();
   
   if (argc != 1 && argc != 2) {
-    port.print("ER\n");
     return;
   }
 
@@ -189,7 +227,6 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   lastComTime = millis();
 
   if (argc < 3 || argc > 5) {
-    port.print("ER\n");
     return;
   }
 
@@ -200,8 +237,6 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
-
-  port.print("OK\n");
 }
 
 

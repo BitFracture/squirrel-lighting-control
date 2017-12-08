@@ -1,11 +1,11 @@
 /**
- * The Flying Squirrels: Squirrel Lighting Controller
- * Node:     2/Client: Sun Meter
- * Hardware: ESP8266-01[S]
- * Purpose:  Monitor exterior light levels, report to server.
- * Author:   Erik W. Greif
- * Date:     2017-10-14
- */
+   The Flying Squirrels: Squirrel Lighting Controller
+   Node:     Client: Pressure Meter
+   Hardware: ESP8266-01[S]
+   Purpose:  Monitor pressure sensor levels, report to server.
+   Author:   Erik W. Greif
+   Date:     2017-10-14
+*/
 
 
 #include <ESP8266WiFi.h>
@@ -28,7 +28,7 @@
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 bool reconnect = true;
- 
+
 WiFiEventHandler disconnectedEventHandler;
 CommandInterpreter ioCmd;
 UdpStream inboundIoControl;
@@ -42,22 +42,24 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  
+
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
-  
-  ioCmd.assign("g", getTemperature);
+
+  ioCmd.assign("g", getPressure);
 }
 
 void loop() {
+
   //Do nothing until we are connected to the server
   handleReconnect();
-  
+
   //Handle commands
   ioCmd.handle(Serial);
   ioCmd.handle(inboundIoControl);
-
+  
   handleHeartbeat();
 }
+
 
 /**
  * Blinks the output LED at the given rate.
@@ -88,24 +90,22 @@ void handleReconnect() {
     if (WiFi.status() != WL_CONNECTED) {
       continue;
     }
-    
-    //Try to register hostname to squirrel
+
+    //Try to connect persistently to squirrel
     WiFiClient registerClient;
     if (TcpClientRegistrar::connectClient(
-         registerClient, IPAddress(192, 168, 3, 1), 23, "daylight", false))
+          registerClient, IPAddress(192, 168, 3, 1), 23, "pressure", false))
       reconnect = false;
 
     //Open the UDP socket
-    inboundIoControl.begin(300);
+    inboundIoControl.begin(400);
   }
 }
 
-void getTemperature(Stream& reply, int argc, const char** argv) {
-  
-  uint32_t data = ioChip.readAll(0);
-  uint8_t* dataArray = (uint8_t*)&data;
-  
-  reply.printf("%i\n", dataArray[0]);
+void getPressure(Stream& reply, int argc, const char** argv) {
+  uint32_t pinValues = ioChip.readAll(0);
+  uint8_t* pin = reinterpret_cast<uint8_t*>(&pinValues);
+  reply.printf("%i\n", pin[0]);
   reply.flush();
 }
 

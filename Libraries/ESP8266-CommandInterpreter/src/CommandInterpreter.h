@@ -23,7 +23,97 @@ private:
     void flush()     { return;    }
     int  peek()      { return -1; }
     int  read()      { return -1; }
-    size_t write(uint8_t u_Data){ return u_Data, 0x01; }
+    size_t write(uint8_t u_Data){ return 0x01; }
+  };
+  
+  //Special class to capture stream as String
+  class StringStream : public Stream {
+  public:
+    StringStream()   { return;    }
+    int  available() { return 0;  }
+    void flush()     { return;    }
+    int  peek()      { return -1; }
+    int  read()      { return -1; }
+    size_t write(uint8_t u_Data) {
+		
+		stringData = stringData + (char)u_Data;
+		return 0x01;
+	}
+	String getString() { return stringData; }
+	String clear() { stringData = String(""); }
+
+  private:
+	String stringData;
+  };
+  
+  //Special class to buffer commands before sending them to another stream
+  //    A new line character is used to send. Each send is counted. 
+  class CommandBufferStream : public Stream {
+  public:
+    CommandBufferStream(Stream& sourceStream, int* sendCounter = 0, int* receiveCounter = 0) {
+		this->sourceStream = &sourceStream;
+		stringReceiveData = String();
+		stringData = String();
+		sendCount = sendCounter != 0 ? sendCounter : &internalSendCounter;
+		receiveCount = receiveCounter != 0 ? receiveCounter : &internalReceiveCounter;
+	}
+    int  available() { return sourceStream->available(); }
+    void flush() {
+		
+		sourceStream->print(stringData);
+		stringData = String();
+		sourceStream->flush();
+	}
+    int peek()      { return sourceStream->peek(); }
+	
+    int read() {
+		int realData = sourceStream->read();
+		if (realData <= 0) return realData;
+		
+		uint8_t data = (uint8_t)(char)realData;
+		stringReceiveData += (char)data;
+		
+		//Send echo now?
+		if (data == (uint8_t)'\n') {
+			if (sequenceNumbersEnabled)
+				sourceStream->printf("[<-- %04d] %s", *receiveCount, stringReceiveData.c_str());
+			else
+				sourceStream->print(stringReceiveData);
+			stringReceiveData = "";
+			(*receiveCount)++;
+		}
+		
+		return realData;
+	}
+    size_t write(uint8_t u_Data) {
+		
+		stringData = stringData + (char)u_Data;
+		
+		//Send buffer now?
+		if (u_Data == (uint8_t)'\n') {
+			if (sequenceNumbersEnabled)
+				sourceStream->printf("[--> %04d] %s", *sendCount, stringData.c_str());
+			else
+				sourceStream->print(stringData);
+			stringData = "";
+			(*sendCount)++;
+		}
+		
+		return 0x01;
+	}
+	String getString() { return stringData; }
+	String getReceiveString() { return stringReceiveData; }
+	void enableSequenceNumbers(bool enable) { this->sequenceNumbersEnabled = enable; }
+
+  private:
+	String stringReceiveData;
+	String stringData;
+	Stream* sourceStream;
+	int internalReceiveCounter;
+	int internalSendCounter;
+	int* sendCount;
+	int* receiveCount;
+	bool sequenceNumbersEnabled = false;
   };
   
   //Number of commands possible to be registered (preallocated)
@@ -36,6 +126,7 @@ private:
   const static int CMD_MAX_ARGS = 16;
   //A pre-constructed null stream to send to UDP requests
   NullStream nullStream;
+  StringStream stringStream;
 
   //Command receive buffer
   char cmdBuffer[CMD_BUFFER_SIZE + 1];
@@ -51,8 +142,14 @@ private:
   //Command prefix character
   char prefix = '\0';
   
+  //Store command counters
+  int receiveCount = 0;
+  int sendCount = 0;
+  
   void execute(Stream&, char*, char*);
   void process(Stream&, char*);
+  bool echoEnabled = false;
+  bool sequenceNumbersEnabled = false;
   
 public:
   CommandInterpreter();
@@ -62,4 +159,9 @@ public:
   void setPrefix(char);
   void handle(Stream&);
   void handleUdp(WiFiUDP&);
+  void enableEcho(bool);
+  void enableSequenceNumbers(bool);
+  
+  int getSendCount();
+  int getReceiveCount();
 };

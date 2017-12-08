@@ -27,7 +27,8 @@ uint8_t Pcf8591::read(uint8_t chipNumber, uint8_t inputNumber) {
   twoWireSource->beginTransmission(thisAddress);
   twoWireSource->write(getControlCode(0, inputNumber, outputEnabled, false));
   twoWireSource->endTransmission();
-  
+ 
+  delayMicroseconds(60);
   twoWireSource->requestFrom(thisAddress, 2);
 
   //Sample two bytes, because first byte is from the previous request (see spec sheet)
@@ -43,13 +44,40 @@ uint8_t Pcf8591::read(uint8_t chipNumber, uint8_t inputNumber) {
   return answer;
 }
 
+uint32_t Pcf8591::readAll(uint8_t chipNumber) {
+
+	uint8_t thisAddress = getAddress(chipNumber);
+
+	twoWireSource->beginTransmission(thisAddress);
+	twoWireSource->write(getControlCode(0, 0, true, true));
+	twoWireSource->endTransmission();
+
+	delayMicroseconds(60);
+	twoWireSource->requestFrom(thisAddress, 5);
+
+	//Sample two bytes, because first byte is from the previous request (see spec sheet)
+	uint32_t answer = 0;
+	for (int i = 0; i < 5; i++) {
+		
+		int startTime = millis();
+		while (twoWireSource->available() <= 0) {
+			
+			if (startTime - millis() < timeout)
+			return 0;
+		}
+		uint8_t rawValue = twoWireSource->read();
+		if (i == 0) continue;
+		answer |= rawValue << ((i - 1) * 8);
+	}
+	return answer;
+}
+
 /**
  * Writes analog output to the only output pin on the given chip.
  */
-void Pcf8591::write(uint8_t chipNumber, uint8_t value) {
-  if (!outputEnabled)
-    return;
+void Pcf8591::write(uint8_t chipNumber, uint8_t value, bool outputEnable) {
 
+  this->outputEnabled = outputEnable;
   uint8_t thisAddress = getAddress(chipNumber);
   
   twoWireSource->beginTransmission(thisAddress);
@@ -63,8 +91,8 @@ void Pcf8591::write(uint8_t chipNumber, uint8_t value) {
 /**
  * If disabled, output is in hi-z state even when written to (default).
  */
-void Pcf8591::enableOutput(bool enabled) {
-  outputEnabled = enabled;
+bool Pcf8591::getOutputEnabled() {
+  return outputEnabled;
 }
 
 /**
