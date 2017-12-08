@@ -20,21 +20,39 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include <my9291.h>;
+#include <my9231.h>;
 
 //Custom libraries
 #include <CommandInterpreter.h>
- 
+
+//Uncomment the hardware platform
+#define SONOFF_B1 0
+//#define THINKER_AILIGHT 1
+
+#ifdef SONOFF_B1
+const int LED_DATA_PIN = 12;
+const int LED_CLCK_PIN = 14;
+#elif THINKER_AILIGHT
 const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
+#endif
 const char* WIFI_SSID = "SQUIRREL_NET";
 const char* WIFI_PASS = "wj7n2-dx309-dt6qz-8t8dz";
 const IPAddress broadcastAddress(192, 168, 3, 255);
 
 //Our definition of "warm" varies from platform to platform... how to do this?
+#ifdef SONOFF_B1
+const uint8_t warmColor[] = {  0,   0,  0,    0,   255};
+#elif THINKER_AILIGHT
 const uint8_t warmColor[] = {255, 128,  0,   64,   0};
-const uint8_t coolColor[] = {  0,   0, 64,  255,   0};
+#endif
+const uint8_t coolColor[] = {  0,   0,  0,  255,   0};
 
+#ifdef SONOFF_B1
+my9231 ledDriver = my9231(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
+#elif THINKER_AILIGHT
 my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
+#endif
 
 //When iocontrol connects, it will be here
 WiFiUDP clientIoControl;
@@ -119,6 +137,7 @@ void handleReconnect() {
     if (WiFi.status() != WL_CONNECTED) {
       break;
     }
+    Serial.print("Connected\n");
 
     //Open udp port for lumen data
     clientIoControl.begin(23);
@@ -146,8 +165,10 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
 
   lastComTime = millis();
   
-  if (argc != 1)
+  if (argc != 1) {
     port.print("ER\n");
+    return;
+  }
 
   //The multiplier defines where we are from cool to warm
   float multiplier = hexToByte<uint8_t>(argv[0]) / 255.0f;
@@ -169,7 +190,7 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
     port.print("ER\n");
     return;
   }
-  
+
   colors[0] = hexToByte<uint8_t>(argv[0]);
   colors[1] = hexToByte<uint8_t>(argv[1]);
   colors[2] = hexToByte<uint8_t>(argv[2]);

@@ -263,15 +263,19 @@ void commandSetTemp(Stream& reply, int argc, const char** argv) {
 
 void commandSetColor(Stream& reply, int argc, const char** argv) {
 
-  if (argc != 3) {
+  if (argc == 1 && argv[0][0] == 'a') {
+    outputMode = MODE_HUE;
+  }
+  else if (argc == 3) {
+    outputMode = MODE_MANUAL_HUE;
+    colorRed   = (uint8_t)atoi(argv[0]);
+    colorGreen = (uint8_t)atoi(argv[1]);
+    colorBlue  = (uint8_t)atoi(argv[2]);
+  }
+  else {
     reply.print("ER\n");
     return;
   }
-
-  outputMode = MODE_MANUAL_HUE;
-  colorRed   = (uint8_t)atoi(argv[0]);
-  colorGreen = (uint8_t)atoi(argv[1]);
-  colorBlue  = (uint8_t)atoi(argv[2]);
   
   reply.print("OK\n");
 }

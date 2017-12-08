@@ -184,19 +184,22 @@ void commandSetTimeout(Stream& port, int argc, const char** argv) {
 
 char cmdOutBuffer[15];
 void commandSetColor(Stream& port, int argc, const char** argv) {
-  if (argc != 3) {
-    
-    port.print("You must specify 3 space-delimited color channels 0 to 255\n");
-    return;
-  }
 
   if (!clientIoControl || !clientIoControl->connected())
   {
     port.print("Waiting for IOControl connection, please try again later");
     return;
   }
-
-  sprintf(&cmdOutBuffer[0], "c %s %s %s\n", argv[0], argv[1], argv[2]);
+  
+  if (argc == 1 && strcmp("auto", argv[0]) == 0) {
+    sprintf(cmdOutBuffer, "c a\n");
+  } else if (argc == 3) {
+    sprintf(cmdOutBuffer, "c %s %s %s\n", argv[0], argv[1], argv[2]);
+  } else {
+    port.print("You must specify 3 space-delimited color channels 0 to 255 or auto\n");
+    return;
+  }
+  
   clientIoControl->print(&cmdOutBuffer[0]);
   port.print("OK\n");
 }
