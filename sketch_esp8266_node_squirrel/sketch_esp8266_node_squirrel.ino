@@ -95,6 +95,7 @@ void setup() {
   serialCmd.assign("test-args",   commandTestArgs);
   serialCmd.assign("set-timeout", commandSetTimeout);
   serialCmd.assign("get-stats",   commandGetStats);
+  serialCmd.assign("drop-remote", commandDropRemote);
 
   //Remote user commands (proxy them to IOControl)
   serialCmd.assign("color",          onSetColor);
@@ -274,6 +275,10 @@ void onSetListen(Stream& port, int argc, const char** argv) {
 void onGetDebug(Stream& port, int argc, const char** argv) {
   simpleProxyHandler(port, argc, argv, "get-debug", outboundIoControl);
 }
+void commandDropRemote(Stream& port, int argc, const char** argv) {
+  simpleProxyHandler(port, argc, argv, "drop-remote", outboundIoControl);
+}
+
 
 //******************************************************************************
 //    LOCAL COMMAND HANDLERS
@@ -314,6 +319,7 @@ void commandHelp(Stream& port, int argc, const char** argv) {
   port.print("test-args ........... Test argument parser\n");
   port.print("set-timeout ......... Connection command timeout\n");
   port.print("get-stats ........... Get send/recv counters\n");
+  port.print("drop-remote ......... Kill remote connections\n");
   port.print("\n");
   port.flush();
 }

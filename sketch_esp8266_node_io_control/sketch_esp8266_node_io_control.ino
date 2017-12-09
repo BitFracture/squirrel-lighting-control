@@ -146,6 +146,7 @@ void setup() {
   squirrelCmd.assign("get-mode", onCommandGetMode);
   squirrelCmd.assign("listen", onCommandSetListen);
   squirrelCmd.assign("get-debug", onCommandGetDebug);
+  squirrelCmd.assign("drop-remote", onCommandDropRemote);
 }
 
 /**
@@ -520,9 +521,9 @@ void updateAudioMotionPowerOnOffColorFlip() {
         setPower(POWER_ON);
       }
       lastMotionTime = millis();
-    } else if (millis() - lastMotionTime > motionTimeout * 1000) {
+    } else if (outputMode != MODE_OFF && millis() - lastMotionTime > motionTimeout * 1000) {
       setPower(POWER_OFF);
-      lastMotionTime = millis();
+      //lastMotionTime = millis();
     }
   }
 }
@@ -561,12 +562,12 @@ bool convertNumber(const char* strNum, uint8_t& numOut) {
  */
 int lastOutputMode;
 void setPower(PowerChangeState powerState) {
-  static bool lastMotionEnabled;
-  bool toggleMotion = false; // Insure motion detector doesn't wake up clapp sleep 
+  static bool lastMotionState, motionStateChangedOnLastCall = false;
+  
+  bool isClap = (powerState == POWER_TOGGLE); // Insure motion detector doesn't wake up clap sleep 
   
   // Turn toggle into the appropriate command
-  if (powerState == POWER_TOGGLE){
-    toggleMotion = true;
+  if (isClap) {
     powerState = (outputMode == MODE_OFF ? POWER_ON : POWER_OFF);
   }
   
@@ -575,13 +576,22 @@ void setPower(PowerChangeState powerState) {
     lastOutputMode = outputMode;
     outputMode = MODE_OFF;
     
-    if (toggleMotion)
-      lastMotionEnabled = motionEnabled;
+    if (isClap) {
+      lastMotionState = motionEnabled;
+      motionEnabled = false;
+      motionStateChangedOnLastCall = true;
+    }
   } else if (outputMode == MODE_OFF && powerState == POWER_ON) {
     outputMode = lastOutputMode;
     
-    if (toggleMotion)
-      motionEnabled = lastMotionEnabled;
+    if (motionStateChangedOnLastCall) {
+      motionStateChangedOnLastCall = false;
+      if (!motionEnabled) { // Don't restore state if the user turned on the motion
+        motionEnabled = lastMotionState;
+      }
+    }
+    
+    lastMotionTime = millis();
   }
 
   Serial.printf("DEBUG: Power set to %s\n", outputMode == MODE_OFF ? "OFF" : "ON");
@@ -921,6 +931,15 @@ void onCommandGetDebug(Stream& reply, int argc, const char** argv) {
                 (outboundClientPressure.connected() ? strPressure.c_str() : "Not connected."),
                 (outboundClientDaylight.connected() ? strPhotoVal.c_str() : "Not connected."));
   
+  reply.flush();
+}
+
+void onCommandDropRemote(Stream& reply, int argc, const char** argv) {
+  outboundClientDaylight.stop();
+  outboundClientPressure.stop();
+  outboundSquirrel.stop();
+
+  reply.print("ok\n");
   reply.flush();
 }
 
