@@ -24,6 +24,8 @@
 #include <WiFiUdp.h>
 #include <my9291.h>;
 #include <my9231.h>;
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
 
 //Custom libraries
 #include <CommandInterpreter.h>
@@ -41,7 +43,7 @@ const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
 #endif
 Persistence persistence;
-const IPAddress broadcastAddress(192, 168, 3, 255);
+IPAddress broadcastAddress(192, 168, 3, 255);
 const IPAddress pairingIp(1, 1, 1, 1);
 
 //Our definition of "warm" varies from platform to platform... how to do this?
@@ -64,10 +66,16 @@ WiFiUDP broadcast;
 CommandInterpreter serialCmd;
 CommandInterpreter dataCmd;
 
+const uint16_t DNS_PORT = 53;
+const uint16_t HTTP_SERVER_PORT = 80;
+ESP8266WebServer webServer(HTTP_SERVER_PORT);
+DNSServer dnsServer;
+
 bool reconnect = true;
 bool colorCycle = false;
 uint8_t colors[5];
 
+const uint8_t PAIR_CYCLE_COUNT = 2;
 const bool BOOT_PAIR = 1;
 const bool BOOT_NORMAL = 0;
 bool bootMode = BOOT_NORMAL;
@@ -86,7 +94,7 @@ void setup() {
 
   //Increment the cycle count and dump to flash
   uint8_t cycles = persistence.incrementAndGetCycles();
-  if (cycles >= 5) {
+  if (cycles >= PAIR_CYCLE_COUNT) {
     bootMode = BOOT_PAIR;
     persistence.resetCycles();
   }
@@ -146,6 +154,11 @@ void setupPair() {
     ESP.restart();
     return;
   }
+  
+  dnsServer.start(DNS_PORT, "*", pairingIp);
+  webServer.onNotFound(onWebRequest);
+  webServer.begin();
+  
   Serial.print("WiFi is ready to accept connections\n");
 }
 
@@ -155,6 +168,7 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 }
 
 uint32_t lastComTime = 0;
+uint32_t lastAddrCheckTime = 0;
 
 void loop() {
   switch (bootMode) {
@@ -174,6 +188,20 @@ void loopNormal() {
     persistence.dump();
   }
 
+  //Update broadcast IP every second or so as long as we aren't actively receiving
+  if (millis() - lastAddrCheckTime > 1000) {
+    IPAddress mine = WiFi.localIP();
+    IPAddress mask = WiFi.subnetMask();
+    broadcastAddress = IPAddress(
+        mine[0] | (~mask[0] & 255), 
+        mine[1] | (~mask[1] & 255), 
+        mine[2] | (~mask[2] & 255), 
+        mine[3] | (~mask[3] & 255));
+    Serial.printf("IP %s, subnet %s, broadcast %s\n", 
+        mine.toString().c_str(), mask.toString().c_str(), 
+        broadcastAddress.toString().c_str());
+    lastAddrCheckTime = millis();
+  }
   //If we haven't heard from anyone in a while, throw out a discovery packet
   if (millis() - lastComTime > 5000) {
     
@@ -183,6 +211,7 @@ void loopNormal() {
     broadcast.endPacket();
 
     lastComTime = millis();
+    lastAddrCheckTime = millis();
   }
   
   //Handle incoming commands (Serial)
@@ -193,9 +222,128 @@ void loopNormal() {
 }
 
 void loopPair() {
+  delay(100);
+  dnsServer.processNextRequest();
+  webServer.handleClient();
+}
 
-  delay(1000);
-  Serial.println("Idle");
+void onWebRequest() {
+  String uri = webServer.uri();
+  if (uri.equals("/authenticate")) {
+    Serial.println("Web request received");
+    onAuthRequest();
+  } else {
+    webServer.sendHeader("Location", "http://bit.bulb/authenticate");
+    webServer.send(302, "text/html", "");
+  }
+}
+
+void onAuthRequest() {
+  if (webServer.method() == HTTP_GET) {
+    webServer.send(200, "text/html", 
+          "<!DOCTYPE html>\n<html>"
+          "<head>"
+              "<style>"
+                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
+                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
+                "body {background-color: #555555;}"
+                "input[type=text] {border: .1em solid #000000;}"
+                "input[type=password] {border: .1em solid #000000;}"
+                "p, label, input {font-size: 20px !important;}"
+                "h1 {font-size: 48px;}"
+                "h2 {font-size: 32px;}"
+              "</style>"
+              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
+          "</head>"
+          "<body>"
+              "<div class=\"container\">"
+                  "<h1>BitLight</h1><h2>Connect To Your Network</h2>"
+                  "<p>In order to use this BitLight, "
+                  "it must connect to your local wireless network. This is probably the "
+                  "same network you use every day.<br/>Enter that information here "
+                  "and submit the form.</p>"
+                  "<form method=\"post\">"
+                      "<label>Wi-Fi Name (SSID)</label><br/>"
+                      "<input name=\"ssid\" type=\"text\" value=\"\"></input><br/>"
+                      "<label>Wi-Fi Password</label><br/>"
+                      "<input name=\"pass\" type=\"password\" value=\"\"></input><br/><br/>"
+                      "<input type=\"submit\"></input>"
+                  "</form>"
+              "</div>"
+          "</body></html>");
+  }
+
+  //Form submission
+  else if (webServer.method() == HTTP_POST) {
+    String ssid = webServer.arg("ssid");
+    String pass = webServer.arg("pass");
+    bool failed = false;
+    if (ssid.length() <= 1 || ssid.length() > 32)
+      failed = true;
+    if (pass.length() > 32)
+      failed = true;
+
+    //If failure, report it
+    if (failed) webServer.send(200, "text/html", 
+          "<!DOCTYPE html>\n<html>"
+          "<head>"
+              "<style>"
+                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
+                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
+                "body {background-color: #555555;}"
+                "input[type=text] {border: .1em solid #000000;}"
+                "input[type=password] {border: .1em solid #000000;}"
+                "p, label, input {font-size: 20px !important;}"
+                "h1 {font-size: 48px;}"
+                "h2 {font-size: 32px;}"
+              "</style>"
+              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
+          "</head>"
+          "<body>"
+              "<div class=\"container\">"
+                  "<h1>BitLight</h1><h2>Something is wrong...</h2>"
+                  "<p>Your network name and password may not be more than 32 characters. "
+                  "Your network name may not be empty. These are the same credentials you use "
+                  "to connect your phone or personal computer to your network.</p><br/>"
+                  "<a href=\"/\">Try Again</a>"
+              "</div>"
+          "</body></html>");
+      
+    if (!failed) webServer.send(200, "text/html", 
+          "<!DOCTYPE html>\n<html>"
+          "<head>"
+              "<style>"
+                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
+                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
+                "body {background-color: #555555;}"
+                "input[type=text] {border: .1em solid #000000;}"
+                "input[type=password] {border: .1em solid #000000;}"
+                "p, label, input {font-size: 20px !important;}"
+                "h1 {font-size: 48px;}"
+                "h2 {font-size: 32px;}"
+              "</style>"
+              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
+          "</head>"
+          "<body>"
+              "<div class=\"container\">"
+                  "<h1>BitLight</h1><h2>Thank you</h2>"
+                  "<p>Your BitLight is restarting and will try to connect "
+                  "to your network. If the bulb does not connect to your controller, try "
+                  "these connection steps again, as this may be a sign that you have typed "
+                  "your network settings incorrectly. If your network is an AC "
+                  "(5GHz band) network, you must enable the B, G, or N wireless network "
+                  "to connect this device.</p>"
+              "</div>"
+          "</body></html>");
+
+    //Update network settings, exit pair mode
+    if (!failed) {
+      persistence.setSsid((char*)ssid.c_str());
+      persistence.setPass((char*)pass.c_str());
+      persistence.dump();
+      ESP.restart();
+    }
+  }
 }
 
 void handleReconnect() {
@@ -241,6 +389,23 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
     colors[i] = (uint8_t)(channelRaw * brightness);
   }
 
+  ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
+}
+
+void commandSetColors(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
+
+  if (argc < 3 || argc > 5) {
+    return;
+  }
+
+  colors[0] = (uint8_t)atoi(argv[0]);
+  colors[1] = (uint8_t)atoi(argv[1]);
+  colors[2] = (uint8_t)atoi(argv[2]);
+  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
+  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
+  
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 }
 
