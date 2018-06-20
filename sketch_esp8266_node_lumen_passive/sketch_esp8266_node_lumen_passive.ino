@@ -5,6 +5,9 @@
  * Purpose:  Connect to a network and receive light control data
  * Author:   Erik W. Greif
  * Date:     2018-06-19
+ * 
+ * ROM sizes:
+ *   Thinker AI Light: 1MB, 64KB SPIFFS
  */
 
 //ESP8266 libraries
@@ -37,8 +40,9 @@ const int LED_CLCK_PIN = 14;
 const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
 #endif
-Persistence persistence = Persistence::load();
+Persistence persistence;
 const IPAddress broadcastAddress(192, 168, 3, 255);
+const IPAddress pairingIp(1, 1, 1, 1);
 
 //Our definition of "warm" varies from platform to platform... how to do this?
 #ifdef SONOFF_B1
@@ -64,6 +68,11 @@ bool reconnect = true;
 bool colorCycle = false;
 uint8_t colors[5];
 
+const bool BOOT_PAIR = 1;
+const bool BOOT_NORMAL = 0;
+bool bootMode = BOOT_NORMAL;
+uint32_t cycleClearTime = 0;
+
 //Use for UDP send and receive
 const int PACKET_DATA_SIZE = 64;
 char packetData[PACKET_DATA_SIZE];
@@ -72,22 +81,37 @@ WiFiEventHandler disconnectedEventHandler;
 
 void setup() {
   WiFi.persistent(false);
+  Persistence::init();
+  persistence = Persistence::load();
 
-  //If persistence is dirty, make sure we write it now
-  if (persistence.getIsDirty())
-    persistence.dump();
+  //Increment the cycle count and dump to flash
+  uint8_t cycles = persistence.incrementAndGetCycles();
+  if (cycles >= 5) {
+    bootMode = BOOT_PAIR;
+    persistence.resetCycles();
+  }
+  persistence.dump();
+  cycleClearTime = millis() + 4000;
   
   //Initial light data
   colors[0] = 0;
   colors[1] = 0;
   colors[2] = 0;
-  colors[3] = 255;
-  colors[4] = 0;
+  colors[3] = 128;
+  colors[4] = 128;
 
   Serial.begin(9600);
   delay(500);
-  Serial.print("Initialized\n");
 
+  switch (bootMode) {
+    case BOOT_NORMAL: setupNormal(); break;
+    case BOOT_PAIR: setupPair(); break;
+  }
+}
+
+void setupNormal() {
+  Serial.print("Booting normal mode\n");
+  
   ledDriver.setState(true);
   ledDriver.setColor((my9291_color_t) {colors[0], colors[1], colors[2], colors[3], colors[4]});
   disconnectedEventHandler = WiFi.onStationModeDisconnected(&triggerReconnect);
@@ -103,6 +127,28 @@ void setup() {
   dataCmd = CommandInterpreter(serialCmd);
 }
 
+void setupPair() {
+  Serial.print("Booting pairing mode\n");
+
+  ledDriver.setState(true);
+  ledDriver.setColor((my9291_color_t) {0, 0, 0, 0, 0});
+
+  //Set up the access point
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(250);
+  
+  WiFi.softAPConfig(pairingIp, pairingIp, IPAddress(255, 255, 255, 0));
+  char* ssid = "BitLight-0000";
+  memcpy(ssid + 9, persistence.getTransientId(), 4);
+  if (!WiFi.softAP(ssid)) {
+    Serial.printf("Access point \"%s\" could not initialize\n", ssid);
+    ESP.restart();
+    return;
+  }
+  Serial.print("WiFi is ready to accept connections\n");
+}
+
 void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
   
   reconnect = true;
@@ -111,8 +157,22 @@ void triggerReconnect(const WiFiEventStationModeDisconnected& event) {
 uint32_t lastComTime = 0;
 
 void loop() {
+  switch (bootMode) {
+    case BOOT_NORMAL: loopNormal(); break;
+    case BOOT_PAIR: loopPair(); break;
+  }
+}
+
+void loopNormal() {
   //Do nothing until we are connected to the server
   handleReconnect();
+
+  //Clear the reset counter if we pass reset cycle timeout
+  if (cycleClearTime && millis() > cycleClearTime) {
+    cycleClearTime = 0;
+    persistence.resetCycles();
+    persistence.dump();
+  }
 
   //If we haven't heard from anyone in a while, throw out a discovery packet
   if (millis() - lastComTime > 5000) {
@@ -130,6 +190,12 @@ void loop() {
 
   //Handle UDP data stream (from iocontrol)
   dataCmd.handleUdp(clientData);
+}
+
+void loopPair() {
+
+  delay(1000);
+  Serial.println("Idle");
 }
 
 void handleReconnect() {

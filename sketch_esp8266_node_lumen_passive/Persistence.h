@@ -17,6 +17,7 @@ private:
   struct PackedData {
     char ver;
     uint16_t port;
+    uint8_t cycles;
     char ssid[33];
     char pass[33];
     char name[33];
@@ -33,6 +34,7 @@ private:
   const char PERSISTENCE_VERSION = 1;
   const char* DEFAULT_SSID = "network-ssid\0";
   const char* DEFAULT_PASS = "network-pass\0";
+  char* id = "0000";
 
   /**
    * Uses entropy of the MAC address and current micros to generate a pseudo random seed
@@ -64,6 +66,8 @@ private:
     packedData.ssid[32] = 0;
     packedData.pass[32] = 0;
     packedData.name[32] = 0;
+    
+    randomSeed(generateSeed());
 
     //Check validity, load defaults if not valid
     if (!isAsciiString(&packedData.ssid[0]) || strlen(&packedData.ssid[0]) <= 0) {
@@ -79,7 +83,6 @@ private:
     if (!isAsciiString(&packedData.name[0]) || strlen(&packedData.name[0]) <= 0) {
       dirty = true;
       memset(&packedData.name[0], 0, 33);
-      randomSeed(generateSeed());
       for (int i = 0; i < 4; i++)
         packedData.name[i] = 'a' + random(0, 26);
     }
@@ -91,8 +94,18 @@ private:
       packedData.port = DEFAULT_PORT;
       dirty = true;
     }
+
+    //Unique ID for this session
+    for (int i = 0; i < 4; i++)
+      id[i] = 'A' + random(0, 26);
   }
 public:
+  Persistence() : packedData(PackedData()), dirty(false) {}
+  Persistence operator=(Persistence toCopy) {
+    this->packedData = toCopy.packedData;
+    this->dirty = toCopy.dirty;
+    return *this;
+  }
   /**
    * Constructs a Persistence object from the data stored in EEPROM or Flash.
    */
@@ -104,6 +117,9 @@ public:
       *(((byte*)(&packed)) + i) = EEPROM.read(i);
 
     return Persistence(packed);
+  }
+  static void init() {
+    EEPROM.begin(512);
   }
   
   void dump() {
@@ -134,6 +150,19 @@ public:
 
   uint16_t getPort() {
     return packedData.port;
+  }
+
+  const char* getTransientId() {
+    return (const char*)id;
+  }
+  
+  uint8_t incrementAndGetCycles() {
+    packedData.cycles++;
+    return packedData.cycles;
+  }
+
+  void resetCycles() {
+    packedData.cycles = 0;
   }
   
   void setSsid(char* newSsid) {
