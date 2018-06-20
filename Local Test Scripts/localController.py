@@ -41,7 +41,7 @@ def clientMulticastMain(command, clientList, lock):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     while (True):
-        sleep(0.1)
+        sleep(.9)
         lock.acquire()
         for address in clientList:
             sock.sendto(command["value"].encode('ascii'), (address, UDP_PORT))

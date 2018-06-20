@@ -15,23 +15,21 @@
 class Persistence {
 private:
   struct PackedData {
-    char ver;
+    uint8_t ver;
     uint16_t port;
     uint8_t cycles;
     char ssid[33];
     char pass[33];
     char name[33];
-    char defaultColor[6];
-    char pureRed[6];
-    char pureGreen[6];
-    char pureBlue[6];
-    char pureWhite[6];
-    char pureWarm[6];
+    uint8_t defaultColor[6];
+    float hues[6];
+    uint8_t pureWhite[6];
+    uint8_t pureWarm[6];
   };
   PackedData packedData;
   bool dirty;
   const uint16_t DEFAULT_PORT = 23;
-  const char PERSISTENCE_VERSION = 1;
+  const uint8_t PERSISTENCE_VERSION = 1;
   const char* DEFAULT_SSID = "network-ssid\0";
   const char* DEFAULT_PASS = "network-pass\0";
   char* id = "0000";
@@ -159,6 +157,19 @@ public:
   uint8_t incrementAndGetCycles() {
     packedData.cycles++;
     return packedData.cycles;
+  }
+  
+  const float* getHues() {
+    return (const float*)&packedData.hues[0];
+  }
+
+  void setHues(float* newHues) {
+    for (int i = 0; i < 6; i++) {
+      if (packedData.hues[i] != newHues[i]) {
+        packedData.hues[i] = newHues[i];
+        dirty = true;
+      }
+    }
   }
 
   void resetCycles() {

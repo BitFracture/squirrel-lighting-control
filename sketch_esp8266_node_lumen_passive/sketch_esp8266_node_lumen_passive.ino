@@ -75,7 +75,7 @@ bool reconnect = true;
 bool colorCycle = false;
 uint8_t colors[5];
 
-const uint8_t PAIR_CYCLE_COUNT = 2;
+const uint8_t PAIR_CYCLE_COUNT = 3;
 const bool BOOT_PAIR = 1;
 const bool BOOT_NORMAL = 0;
 bool bootMode = BOOT_NORMAL;
@@ -101,7 +101,7 @@ void setup() {
   persistence.dump();
   cycleClearTime = millis() + 4000;
   
-  //Initial light data
+  //Initial light data (remove, use persistence in a controller)
   colors[0] = 0;
   colors[1] = 0;
   colors[2] = 0;
@@ -132,6 +132,8 @@ void setupNormal() {
   //Assign some commands to the command controllers
   serialCmd.assign("c", commandSetColors);
   serialCmd.assign("t", commandSetTemp);
+  serialCmd.assign("hsv", commandSetColorsHsv);
+  serialCmd.assign("calibrate-hue", commandSetHueCalibration);
   dataCmd = CommandInterpreter(serialCmd);
 }
 
@@ -189,7 +191,7 @@ void loopNormal() {
   }
 
   //Update broadcast IP every second or so as long as we aren't actively receiving
-  if (millis() - lastAddrCheckTime > 1000) {
+  if (millis() - lastAddrCheckTime > 2000 && millis() - lastComTime > 2000) {
     IPAddress mine = WiFi.localIP();
     IPAddress mask = WiFi.subnetMask();
     broadcastAddress = IPAddress(
@@ -221,10 +223,25 @@ void loopNormal() {
   dataCmd.handleUdp(clientData);
 }
 
+uint32_t colorCycleTime = 0;
 void loopPair() {
-  delay(100);
-  dnsServer.processNextRequest();
-  webServer.handleClient();
+  static float hue = 0;
+  
+  if (millis() - colorCycleTime > 33) {
+    dnsServer.processNextRequest();
+    webServer.handleClient();
+    
+    //Color cycle when pairing
+    hue += 0.005;
+    if (hue >= 360.0f)
+      hue -= 360.0f;
+    
+    hsvToRgb(calibrateHue(hue), 100.0f, 100.0f, colors[0], colors[1], colors[2]);
+    colors[3] = 0;
+    colors[4] = 0;
+    
+    ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
+  }
 }
 
 void onWebRequest() {
@@ -409,21 +426,121 @@ void commandSetColors(Stream& port, int argc, const char** argv) {
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 }
 
-void commandSetColors(Stream& port, int argc, const char** argv) {
+void commandSetColorsHsv(Stream& port, int argc, const char** argv) {
 
   lastComTime = millis();
 
-  if (argc < 3 || argc > 5) {
+  bool calibrate = true;
+  if (argc != 3 && argc != 4)
     return;
-  }
+  if (argc == 4)
+    calibrate = atoi(argv[3]) > 0;
 
-  colors[0] = (uint8_t)atoi(argv[0]);
-  colors[1] = (uint8_t)atoi(argv[1]);
-  colors[2] = (uint8_t)atoi(argv[2]);
-  colors[3] = argc > 3 ? (uint8_t)atoi(argv[3]) : 0;
-  colors[4] = argc > 4 ? (uint8_t)atoi(argv[4]) : 0;
+  float hue = atof(argv[0]);
+  if (calibrate)
+    hue = calibrateHue(hue);
+  hsvToRgb(hue, atof(argv[1]), atof(argv[2]),
+      colors[0], colors[1], colors[2]);
+
+  colors[3] = 0;
+  colors[4] = 0;
   
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
 }
 
+void commandSetHueCalibration(Stream& port, int argc, const char** argv) {
+  lastComTime = millis();
+
+  if (argc != 6) {
+    return;
+  }
+
+  float calibrations[] = {atof(argv[0]), atof(argv[1]), atof(argv[2]), 
+      atof(argv[3]), atof(argv[4]), atof(argv[5])};
+
+  persistence.setHues(&calibrations[0]);
+  if (persistence.getIsDirty()) {
+    persistence.dump();
+    Serial.printf("New calibration: %d, %d, %d, %d, %d, %d\n", 
+      (int)calibrations[0], (int)calibrations[1], (int)calibrations[2], 
+      (int)calibrations[3], (int)calibrations[4], (int)calibrations[5]);
+  }
+}
+
+float calibrateHue(float hue) {
+  static float zoneSize = 60.0f;
+  uint8_t zone = static_cast<uint8_t>(hue / zoneSize);
+  uint8_t end = (zone + 1) % 6;
+
+  const float* calibrations = persistence.getHues();
+  
+  //Slope doesn't work well in cycles, so bump it up one cycle
+  float trueEnd = calibrations[end];
+  if (end < zone)
+    trueEnd += 360.0f;
+
+  float slope = (trueEnd - calibrations[zone]) / zoneSize;
+  float resultingHue = calibrations[zone] + (slope * (hue - (zone * zoneSize)));
+  return easyFMod(resultingHue, 360.0f);
+}
+
+float easyFMod(float numerator, float denominator) {
+  while (numerator < 0)
+    numerator += denominator;
+  while (numerator >= denominator)
+    numerator -= denominator;
+
+  return numerator;
+}
+
+float clamp(float value, float lower, float upper) {
+
+  if (value < lower)
+    value = lower;
+  if (value > upper)
+    value = upper;
+  return value;
+}
+
+/**
+ * Note:
+ * The hsvToRgb functions was copied from "https://github.com/ratkins/RGBConverter/"
+ * with a free to use license.
+ *
+ * Converts an HSV color value to RGB. Conversion formula
+ * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
+ * Assumes h, s, and v are contained in the set [0, 1] and
+ * returns r, g, and b in the set [0, 255].
+ *
+ * @param   Number  h       The hue
+ * @param   Number  s       The saturation
+ * @param   Number  v       The value
+ * @return  Array           The RGB representation
+ */
+void hsvToRgb(float _h, float _s, float _v, uint8_t& _r, uint8_t& _g, uint8_t& _b) {
+    float h = easyFMod(_h / 360.0f, 1.0f);
+    float s = clamp(_s / 100.0f, 0.0f, 1.0f);
+    float v = clamp(_v / 100.0f, 0.0f, 1.0f);
+    
+    float r, g, b;
+
+    int i = int(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    switch(i % 6){
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+
+    _r = r * 255;
+    _g = g * 255;
+    _b = b * 255;
+}
 
