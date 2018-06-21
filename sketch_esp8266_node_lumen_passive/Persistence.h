@@ -12,6 +12,8 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 
+const static float DEFAULT_HUES[] = {0.0f, 60.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+  
 class Persistence {
 private:
   struct PackedData {
@@ -137,6 +139,20 @@ public:
   
   boolean getIsDirty() {
     return dirty;
+  }
+
+  void loadDefaults() {
+    packedData.ver = PERSISTENCE_VERSION;
+    packedData.port = DEFAULT_PORT;
+    packedData.cycles = 0;
+    setSsid((char*)DEFAULT_SSID);
+    setPass((char*)DEFAULT_PASS);
+    memset(&packedData.name[0], 0, 33);
+    for (int i = 0; i < 4; i++)
+      packedData.name[i] = 'a' + random(0, 26);
+    for (int i = 0; i < 6; i++)
+      packedData.hues[i] = DEFAULT_HUES[i];
+    dirty = true;
   }
   
   const char* getSsid() {

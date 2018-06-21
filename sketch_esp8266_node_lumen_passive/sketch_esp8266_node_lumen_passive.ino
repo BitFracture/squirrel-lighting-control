@@ -466,6 +466,9 @@ void onWebRequest() {
   if (uri.equals("/authenticate")) {
     Serial.println("Web request received");
     onAuthRequest();
+  } else if (uri.equals("/reset")) {
+    Serial.println("Web request received");
+    onResetRequest();
   } else {
     webServer.sendHeader("Location", "http://bit.bulb/authenticate");
     webServer.send(302, "text/html", "");
@@ -476,6 +479,74 @@ void onWebRequest() {
  * Handles web page requests for the captive portal.
  * Refactoring should be done here.
  */
+void onResetRequest() {
+  if (webServer.method() == HTTP_GET) {
+    webServer.send(200, "text/html", 
+          "<!DOCTYPE html>\n<html>"
+          "<head>"
+              "<style>"
+                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
+                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
+                "body {background-color: #555555;}"
+                "input[type=text] {border: .1em solid #000000;}"
+                "input[type=password] {border: .1em solid #000000;}"
+                "p, label, input {font-size: 20px !important;}"
+                "h1 {font-size: 48px;}"
+                "h2 {font-size: 32px;}"
+              "</style>"
+              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
+          "</head>"
+          "<body>"
+              "<div class=\"container\">"
+                  "<h1>Squirrel</h1><h2>Factory Reset</h2>"
+                  "<p>Selecting &quot;Reset Now&quot; will erase any customization to this bulb and "
+                  "will establish the factory default settings. After rebooting, the "
+                  "bulb will require you to enter pairing mode again to connect it to "
+                  "your network.</p>"
+                  "<form method=\"get\" action=\"/authenticate\">"
+                      "<input type=\"submit\" value=\"Back\"></input>"
+                  "</form>"
+                  "<form method=\"post\">"
+                      "<input type=\"submit\" value=\"Reset Now\"></input>"
+                  "</form>"
+              "</div>"
+          "</body></html>");
+  }
+
+  //Form submission
+  else if (webServer.method() == HTTP_POST) {
+    
+    webServer.send(200, "text/html", 
+          "<!DOCTYPE html>\n<html>"
+          "<head>"
+              "<style>"
+                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
+                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
+                "body {background-color: #555555;}"
+                "input[type=text] {border: .1em solid #000000;}"
+                "input[type=password] {border: .1em solid #000000;}"
+                "p, label, input {font-size: 20px !important;}"
+                "h1 {font-size: 48px;}"
+                "h2 {font-size: 32px;}"
+              "</style>"
+              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
+          "</head>"
+          "<body>"
+              "<div class=\"container\">"
+                  "<h1>Squirrel</h1><h2>Reset complete</h2>"
+                  "<p>Your Squirrel is restarting with factory settings. "
+                  "If you wish to use this bulb again, enter pairing mode again and "
+                  "connect the bulb to your network.</p>"
+              "</div>"
+          "</body></html>");
+
+    //Set factory default settings, exit pair mode
+    persistence.loadDefaults();
+    persistence.dumpIfDirty();
+    ESP.restart();
+  }
+}
+
 void onAuthRequest() {
   if (webServer.method() == HTTP_GET) {
     webServer.send(200, "text/html", 
@@ -505,7 +576,10 @@ void onAuthRequest() {
                       "<input name=\"ssid\" type=\"text\" value=\"\"></input><br/>"
                       "<label>Wi-Fi Password</label><br/>"
                       "<input name=\"pass\" type=\"password\" value=\"\"></input><br/><br/>"
-                      "<input type=\"submit\"></input>"
+                      "<input type=\"submit\" value=\"Save\"></input>"
+                  "</form>"
+                  "<form method=\"get\" action=\"/reset\">"
+                      "<input type=\"submit\" value=\"Factory Reset\"></input>"
                   "</form>"
               "</div>"
           "</body></html>");
