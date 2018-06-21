@@ -1,4 +1,4 @@
-/** 
+/**
  * The Flying Squirrels: Squirrel Lighting Controller
  * Node:     Lumen (WiFi Light)
  * Hardware: ESP8266EX and MY9291/MY9231 LED Drivers
@@ -8,6 +8,8 @@
  * 
  * ROM sizes:
  *   Thinker AI Light: 1MB, 64KB SPIFFS
+ * Ideal calibrations:
+ *   Thinker AI Light: 0 20 120 150 240 325
  */
 
 //ESP8266 libraries
@@ -23,12 +25,12 @@
 #include <WiFiServer.h>
 #include <WiFiUdp.h>
 #include <my9291.h>;
-#include <my9231.h>;
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 
 //Custom libraries
 #include <CommandInterpreter.h>
+#include <my9231.h>;
 #include "Persistence.h"
 
 //--------------------------------------
@@ -48,10 +50,16 @@ const uint16_t  HTTP_SERVER_PORT = 80;
 const uint16_t  PAIRING_RESET_TIMEOUT = 4000;
 const uint16_t  CHECK_ADDRESS_TIMEOUT = 2000;
 const uint16_t  POLL_CONNECTION_TIMEOUT = 5000;
+const uint16_t  KEEP_ALIVE_PERIOD = 60000;
+const uint16_t  FIRMWARE_VERSION = 2;
+const char*     FIRMWARE_NAME = "squirrel";
 
 //--------------------------------------
 //  GLOBAL DEFINITIONS
 //--------------------------------------
+
+const char* INFO_PACKET_TEMPLATE = 
+    "{\"firmware\":\"%s\",\"action\":\"%s\",\"version\":%d,\"name\":\"%s\"}";
 
 //Defines what set of logic to use
 enum BootMode {
@@ -152,6 +160,7 @@ void setupNormal() {
   serialCmd.assign("t", commandSetTemp);
   serialCmd.assign("hsv", commandSetColorsHsv);
   serialCmd.assign("calibrate-hue", commandSetHueCalibration);
+  serialCmd.assign("set-name", commandSetName);
   dataCmd = CommandInterpreter(serialCmd);
 }
 
@@ -166,6 +175,7 @@ uint32_t lastComTime = 0;
 void loopNormal() {
   static uint32_t cycleClearTime = millis() + PAIRING_RESET_TIMEOUT;
   static uint32_t lastAddrCheckTime = 0;
+  static uint32_t lastKeepAliveTime = millis() + KEEP_ALIVE_PERIOD;
   
   //Do nothing until we are connected to the server
   handleReconnect();
@@ -196,11 +206,21 @@ void loopNormal() {
     
     //UDP Broadcast ourself!
     broadcast.beginPacket(broadcastAddress, persistence.getPort());
-    broadcast.print("d"); //d = discover
+    broadcast.printf(INFO_PACKET_TEMPLATE, FIRMWARE_NAME, "discover", 
+        FIRMWARE_VERSION, persistence.getName());
     broadcast.endPacket();
 
     lastComTime = millis();
     lastAddrCheckTime = millis();
+  }
+  //Keep alive packets
+  if (millis() - lastKeepAliveTime > KEEP_ALIVE_PERIOD) {
+    broadcast.beginPacket(broadcastAddress, persistence.getPort());
+    broadcast.printf(INFO_PACKET_TEMPLATE, FIRMWARE_NAME, "keep-alive", 
+        FIRMWARE_VERSION, persistence.getName());
+    broadcast.endPacket();
+    
+    lastKeepAliveTime = millis();
   }
   
   //Handle incoming commands
@@ -339,6 +359,21 @@ void commandSetHueCalibration(Stream& port, int argc, const char** argv) {
 }
 
 /**
+ * Sets the name of this bulb.
+ */
+void commandSetName(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
+  
+  if (argc != 1) {
+    return;
+  }
+
+  persistence.setName((char*)argv[0]);
+  persistence.dumpIfDirty();
+}
+
+/**
  * Breaks a typical color wheel into six sections, ex: red to yellow, yellow 
  * to green, green to cyan, etc. The boundaries of these regions are typically
  * separated by 60 degrees, but the RGB translations may result in inaccurate 
@@ -382,7 +417,7 @@ void setupPair() {
   delay(250);
   
   WiFi.softAPConfig(PAIRING_IP, PAIRING_IP, IPAddress(255, 255, 255, 0));
-  char* ssid = "BitLight-0000";
+  char* ssid = "Squirrel-0000";
   memcpy(ssid + 9, persistence.getTransientId(), 4);
   if (!WiFi.softAP(ssid)) {
     Serial.printf("Access point \"%s\" could not initialize\n", ssid);
@@ -460,8 +495,8 @@ void onAuthRequest() {
           "</head>"
           "<body>"
               "<div class=\"container\">"
-                  "<h1>BitLight</h1><h2>Connect To Your Network</h2>"
-                  "<p>In order to use this BitLight, "
+                  "<h1>Squirrel</h1><h2>Connect To Your Network</h2>"
+                  "<p>In order to use this Squirrel, "
                   "it must connect to your local wireless network. This is probably the "
                   "same network you use every day.<br/>Enter that information here "
                   "and submit the form.</p>"
@@ -504,7 +539,7 @@ void onAuthRequest() {
           "</head>"
           "<body>"
               "<div class=\"container\">"
-                  "<h1>BitLight</h1><h2>Something is wrong...</h2>"
+                  "<h1>Squirrel</h1><h2>Something is wrong...</h2>"
                   "<p>Your network name and password may not be more than 32 characters. "
                   "Your network name may not be empty. These are the same credentials you use "
                   "to connect your phone or personal computer to your network.</p><br/>"
@@ -529,8 +564,8 @@ void onAuthRequest() {
           "</head>"
           "<body>"
               "<div class=\"container\">"
-                  "<h1>BitLight</h1><h2>Thank you</h2>"
-                  "<p>Your BitLight is restarting and will try to connect "
+                  "<h1>Squirrel</h1><h2>Thank you</h2>"
+                  "<p>Your Squirrel is restarting and will try to connect "
                   "to your network. If the bulb does not connect to your controller, try "
                   "these connection steps again, as this may be a sign that you have typed "
                   "your network settings incorrectly. If your network is an AC "

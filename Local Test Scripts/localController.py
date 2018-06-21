@@ -11,6 +11,8 @@ from multiprocessing import Pool
 import multiprocessing
 from asyncio import Lock
 from time import sleep
+import json
+import datetime
 
 UDP_IP = "0.0.0.0"
 UDP_PORT = 23
@@ -26,13 +28,54 @@ def clientListenerMain(clientList, lock):
     sys.stdout.flush()
 
     while True:
-        (data, addr) = sock.recvfrom(128) # buffer size is 128 bytes
-        if data == b"d":
-            print ("{} is asking to be paired".format(addr[0]))
-            sys.stdout.flush();
+        (rawData, addr) = sock.recvfrom(128) # buffer size is 128 bytes
+        try:
+            data = json.loads(rawData)
+        except:
+            data = {}
+
+        if data.get("firmware", "") != "squirrel":
+            continue;
+
+        if data.get("action", "") == "discover":
             lock.acquire()
-            clientList.append(addr[0])
+            pairClient(clientList, CreateClientEntry(data.get("name", ""), addr[0]))
             lock.release()
+        elif data.get("action", "") == "keep-alive":
+            lock.acquire()
+            renewClient(clientList, CreateClientEntry(data.get("name", ""), addr[0]))
+            lock.release()
+
+def CreateClientEntry(name, ip):
+    return {
+        "name": name,
+        "ip": ip,
+        "time": datetime.datetime.now().timestamp()
+    }
+
+def removeClient(clientList, client):
+    for i in range(0, len(clientList)):
+        resource = json.loads(clientList[i])
+        if resource.get("ip", "") == client.get("ip", ""):
+            clientList.pop(i)
+            print("Removing \"{}\" at IP {}".format(client.get("name", ""), client.get("ip", "")))
+            sys.stdout.flush()
+            break
+
+def pairClient(clientList, client):
+    removeClient(clientList, client)
+    clientList.append(json.dumps(client))
+    print("Pairing \"{}\" at IP {}".format(client.get("name", ""), client.get("ip", "")))
+    sys.stdout.flush()
+
+def renewClient(clientList, client):
+    for i in range(0, len(clientList)):
+        resource = json.loads(clientList[i])
+        if resource.get("ip", "") == client.get("ip", ""):
+            clientList[i] = json.dumps(client)
+            print("Renewing \"{}\" at IP {}".format(client.get("name", ""), client.get("ip", "")))
+            sys.stdout.flush()
+            break
 
 def clientMulticastMain(command, clientList, lock):
     """
@@ -42,9 +85,14 @@ def clientMulticastMain(command, clientList, lock):
 
     while (True):
         sleep(.9)
+        threshold = datetime.datetime.now().timestamp() - 90
         lock.acquire()
-        for address in clientList:
-            sock.sendto(command["value"].encode('ascii'), (address, UDP_PORT))
+        for clientSerial in clientList:
+            client = json.loads(clientSerial)
+            if (client.get("time", 0) < threshold):
+                removeClient(clientList, client)
+            else:
+                sock.sendto(command["value"].encode('ascii'), (client.get("ip", ""), UDP_PORT))
         lock.release()
 
 def clientMain(command, clientList, lock):
