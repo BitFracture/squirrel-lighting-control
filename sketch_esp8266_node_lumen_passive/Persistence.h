@@ -129,6 +129,11 @@ public:
     EEPROM.commit();
     dirty = false;
   }
+
+  void dumpIfDirty() {
+    if (dirty)
+      dump();
+  }
   
   boolean getIsDirty() {
     return dirty;
@@ -156,6 +161,7 @@ public:
   
   uint8_t incrementAndGetCycles() {
     packedData.cycles++;
+    dirty = true;
     return packedData.cycles;
   }
   
@@ -173,38 +179,47 @@ public:
   }
 
   void resetCycles() {
+    dirty = packedData.cycles != 0;
     packedData.cycles = 0;
   }
   
   void setSsid(char* newSsid) {
     int len = strlen(newSsid);
     if (len > 32) len = 32;
-    memcpy(&packedData.ssid[0], newSsid, len);
-    packedData.ssid[len] = 0;
-    dirty = true;
+    if (memcmp(&packedData.ssid[0], newSsid, len) != 0) {
+      memcpy(&packedData.ssid[0], newSsid, len);
+      packedData.ssid[len] = 0;
+      dirty = true;
+    }
   }
 
   void setPass(char* newPass) {
     int len = strlen(newPass);
     if (len > 32) len = 32;
-    memcpy(&packedData.pass[0], newPass, len);
-    packedData.pass[len] = 0;
-    dirty = true;
+    if (memcmp(&packedData.pass[0], newPass, len) != 0) {
+      memcpy(&packedData.pass[0], newPass, len);
+      packedData.pass[len] = 0;
+      dirty = true;
+    }
   }
 
   void setName(char* newName) {
     int len = strlen(newName);
     if (len > 32) len = 32;
-    memcpy(&packedData.name[0], newName, len);
-    packedData.name[len] = 0;
-    dirty = true;
+    if (memcmp(&packedData.name[0], newName, len) != 0) {
+      memcpy(&packedData.name[0], newName, len);
+      packedData.name[len] = 0;
+      dirty = true;
+    }
   }
 
   void setPort(uint16_t newPort) {
     if (newPort <= 0)
       newPort = DEFAULT_PORT;
-    packedData.port = newPort;
-    dirty = true;
+    if (newPort != packedData.port) {
+      packedData.port = newPort;
+      dirty = true;
+    }
   }
 };
 
