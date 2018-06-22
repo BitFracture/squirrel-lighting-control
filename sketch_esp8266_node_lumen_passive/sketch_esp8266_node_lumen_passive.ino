@@ -32,6 +32,9 @@
 #include <CommandInterpreter.h>
 #include <my9231.h>;
 #include "Persistence.h"
+#include "MultiStringStream.h"
+#include "Helpers.h"
+#include "WebStrings.h"
 
 //--------------------------------------
 //  USER-CONFIGURABLE
@@ -43,7 +46,7 @@
 
 //Configurable constants
 const IPAddress PAIRING_IP(1, 1, 1, 1);
-const uint8_t   PAIR_CYCLE_COUNT = 3;
+const uint8_t   PAIR_CYCLE_COUNT = 5;
 const int       PACKET_DATA_MAX_SIZE = 64;
 const uint16_t  DNS_PORT = 53;
 const uint16_t  HTTP_SERVER_PORT = 80;
@@ -100,46 +103,6 @@ WiFiEventHandler disconnectedEventHandler;
 uint8_t colors[5];
 
 //--------------------------------------
-//  SHARED MAIN ROUTINES
-//--------------------------------------
-
-void setup() {
-  WiFi.persistent(false);
-  Persistence::init();
-  persistence = Persistence::load();
-
-  //Increment the cycle count and dump to flash
-  uint8_t cycles = persistence.incrementAndGetCycles();
-  if (cycles >= PAIR_CYCLE_COUNT) {
-    bootMode = BOOT_PAIR;
-    persistence.resetCycles();
-  }
-  persistence.dumpIfDirty();
-  
-  //Initial light data (remove, use persistence in a controller)
-  colors[0] = 0;
-  colors[1] = 0;
-  colors[2] = 0;
-  colors[3] = 128;
-  colors[4] = 128;
-
-  Serial.begin(9600);
-  delay(250);
-
-  switch (bootMode) {
-    case BOOT_NORMAL: setupNormal(); break;
-    case BOOT_PAIR: setupPair(); break;
-  }
-}
-
-void loop() {
-  switch (bootMode) {
-    case BOOT_NORMAL: loopNormal(); break;
-    case BOOT_PAIR: loopPair(); break;
-  }
-}
-
-//--------------------------------------
 //  NORMAL CONTROLLER
 //--------------------------------------
 
@@ -161,6 +124,7 @@ void setupNormal() {
   serialCmd.assign("hsv", commandSetColorsHsv);
   serialCmd.assign("calibrate-hue", commandSetHueCalibration);
   serialCmd.assign("set-name", commandSetName);
+  serialCmd.assign("pair", commandPair);
   dataCmd = CommandInterpreter(serialCmd);
 }
 
@@ -374,6 +338,22 @@ void commandSetName(Stream& port, int argc, const char** argv) {
 }
 
 /**
+ * Sets the name of this bulb.
+ */
+void commandPair(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
+  
+  if (argc != 0) {
+    return;
+  }
+
+  while (persistence.incrementAndGetCycles() < PAIR_CYCLE_COUNT);
+  persistence.dumpIfDirty();
+  ESP.restart();
+}
+
+/**
  * Breaks a typical color wheel into six sections, ex: red to yellow, yellow 
  * to green, green to cyan, etc. The boundaries of these regions are typically
  * separated by 60 degrees, but the RGB translations may result in inaccurate 
@@ -404,6 +384,105 @@ float calibrateHue(float hue) {
 //--------------------------------------
 //  PAIRING CONTROLLER
 //--------------------------------------
+
+/**
+ * Sends a typical web page with custom content.
+ */
+void sendStandardWebPageWith200(const char* content) {
+  static const void* webBuffer[10];
+  webBuffer[0] = WEB_HEADER;
+  webBuffer[1] = content;
+  webBuffer[2] = WEB_FOOTER;
+  webBuffer[3] = NULL;
+  MultiStringStream resetFile(webBuffer);
+  webServer.streamFile<MultiStringStream>(resetFile, "text/html");
+}
+
+/**
+ * Handles web page requests for the captive portal.
+ * Refactoring should be done here.
+ */
+void onResetRequest() {
+  if (webServer.method() == HTTP_GET)
+    sendStandardWebPageWith200(WEB_BODY_RESET);
+
+  //Form submission
+  else if (webServer.method() == HTTP_POST) {
+    sendStandardWebPageWith200(WEB_BODY_RESET_COMPLETE);
+
+    //Set factory default settings, exit pair mode
+    persistence.loadDefaults();
+    persistence.dumpIfDirty();
+    ESP.restart();
+  }
+}
+
+void onConnectRequest() {
+  if (webServer.method() == HTTP_GET)
+    sendStandardWebPageWith200(WEB_BODY_CONNECT);
+
+  //Form submission
+  else if (webServer.method() == HTTP_POST) {
+    String ssid = webServer.arg("ssid");
+    String pass = webServer.arg("pass");
+    bool failed = false;
+    if (ssid.length() <= 1 || ssid.length() > 32)
+      failed = true;
+    if (pass.length() > 32)
+      failed = true;
+
+    //Report submission failure or success
+    if (failed)
+      sendStandardWebPageWith200(WEB_BODY_CONNECT_FAILED);
+    else
+      sendStandardWebPageWith200(WEB_BODY_CONNECT_COMPLETE);
+    
+    //Update network settings, exit pair mode
+    if (!failed) {
+      persistence.setSsid((char*)ssid.c_str());
+      persistence.setPass((char*)pass.c_str());
+      persistence.dumpIfDirty();
+      ESP.restart();
+    }
+  }
+}
+
+void onHomeRequest() {
+  if (webServer.method() == HTTP_GET)
+    sendStandardWebPageWith200(WEB_BODY_HOME);
+}
+
+void onExitRequest() {
+  if (webServer.method() == HTTP_GET)
+    sendStandardWebPageWith200(WEB_BODY_EXIT);
+  
+  ESP.restart();
+}
+
+/**
+ * Served all web requests, redirects all except the authentication endpoint 
+ * to the authentication endpoint. This redirection (and the DNS capture) will
+ * tell devices to open the captive portal for authenticating the user.
+ */
+void onWebRequest() {
+  String uri = webServer.uri();
+  if (uri.equals("/home")) {
+    Serial.println("Web request received");
+    onHomeRequest();
+  } else if (uri.equals("/connect")) {
+    Serial.println("Web request received");
+    onConnectRequest();
+  } else if (uri.equals("/reset")) {
+    Serial.println("Web request received");
+    onResetRequest();
+  } else if (uri.equals("/exit")) {
+    Serial.println("Web request received");
+    onExitRequest();
+  } else {
+    webServer.sendHeader("Location", "http://bit.bulb/home");
+    webServer.send(302, "text/html", "");
+  }
+}
 
 void setupPair() {
   Serial.print("Booting pairing mode\n");
@@ -456,275 +535,43 @@ void loopPair() {
   }
 }
 
-/**
- * Served all web requests, redirects all except the authentication endpoint 
- * to the authentication endpoint. This redirection (and the DNS capture) will
- * tell devices to open the captive portal for authenticating the user.
- */
-void onWebRequest() {
-  String uri = webServer.uri();
-  if (uri.equals("/authenticate")) {
-    Serial.println("Web request received");
-    onAuthRequest();
-  } else if (uri.equals("/reset")) {
-    Serial.println("Web request received");
-    onResetRequest();
-  } else {
-    webServer.sendHeader("Location", "http://bit.bulb/authenticate");
-    webServer.send(302, "text/html", "");
-  }
-}
-
-/**
- * Handles web page requests for the captive portal.
- * Refactoring should be done here.
- */
-void onResetRequest() {
-  if (webServer.method() == HTTP_GET) {
-    webServer.send(200, "text/html", 
-          "<!DOCTYPE html>\n<html>"
-          "<head>"
-              "<style>"
-                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
-                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
-                "body {background-color: #555555;}"
-                "input[type=text] {border: .1em solid #000000;}"
-                "input[type=password] {border: .1em solid #000000;}"
-                "p, label, input {font-size: 20px !important;}"
-                "h1 {font-size: 48px;}"
-                "h2 {font-size: 32px;}"
-              "</style>"
-              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
-          "</head>"
-          "<body>"
-              "<div class=\"container\">"
-                  "<h1>Squirrel</h1><h2>Factory Reset</h2>"
-                  "<p>Selecting &quot;Reset Now&quot; will erase any customization to this bulb and "
-                  "will establish the factory default settings. After rebooting, the "
-                  "bulb will require you to enter pairing mode again to connect it to "
-                  "your network.</p>"
-                  "<form method=\"get\" action=\"/authenticate\">"
-                      "<input type=\"submit\" value=\"Back\"></input>"
-                  "</form>"
-                  "<form method=\"post\">"
-                      "<input type=\"submit\" value=\"Reset Now\"></input>"
-                  "</form>"
-              "</div>"
-          "</body></html>");
-  }
-
-  //Form submission
-  else if (webServer.method() == HTTP_POST) {
-    
-    webServer.send(200, "text/html", 
-          "<!DOCTYPE html>\n<html>"
-          "<head>"
-              "<style>"
-                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
-                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
-                "body {background-color: #555555;}"
-                "input[type=text] {border: .1em solid #000000;}"
-                "input[type=password] {border: .1em solid #000000;}"
-                "p, label, input {font-size: 20px !important;}"
-                "h1 {font-size: 48px;}"
-                "h2 {font-size: 32px;}"
-              "</style>"
-              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
-          "</head>"
-          "<body>"
-              "<div class=\"container\">"
-                  "<h1>Squirrel</h1><h2>Reset complete</h2>"
-                  "<p>Your Squirrel is restarting with factory settings. "
-                  "If you wish to use this bulb again, enter pairing mode again and "
-                  "connect the bulb to your network.</p>"
-              "</div>"
-          "</body></html>");
-
-    //Set factory default settings, exit pair mode
-    persistence.loadDefaults();
-    persistence.dumpIfDirty();
-    ESP.restart();
-  }
-}
-
-void onAuthRequest() {
-  if (webServer.method() == HTTP_GET) {
-    webServer.send(200, "text/html", 
-          "<!DOCTYPE html>\n<html>"
-          "<head>"
-              "<style>"
-                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
-                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
-                "body {background-color: #555555;}"
-                "input[type=text] {border: .1em solid #000000;}"
-                "input[type=password] {border: .1em solid #000000;}"
-                "p, label, input {font-size: 20px !important;}"
-                "h1 {font-size: 48px;}"
-                "h2 {font-size: 32px;}"
-              "</style>"
-              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
-          "</head>"
-          "<body>"
-              "<div class=\"container\">"
-                  "<h1>Squirrel</h1><h2>Connect To Your Network</h2>"
-                  "<p>In order to use this Squirrel, "
-                  "it must connect to your local wireless network. This is probably the "
-                  "same network you use every day.<br/>Enter that information here "
-                  "and submit the form.</p>"
-                  "<form method=\"post\">"
-                      "<label>Wi-Fi Name (SSID)</label><br/>"
-                      "<input name=\"ssid\" type=\"text\" value=\"\"></input><br/>"
-                      "<label>Wi-Fi Password</label><br/>"
-                      "<input name=\"pass\" type=\"password\" value=\"\"></input><br/><br/>"
-                      "<input type=\"submit\" value=\"Save\"></input>"
-                  "</form>"
-                  "<form method=\"get\" action=\"/reset\">"
-                      "<input type=\"submit\" value=\"Factory Reset\"></input>"
-                  "</form>"
-              "</div>"
-          "</body></html>");
-  }
-
-  //Form submission
-  else if (webServer.method() == HTTP_POST) {
-    String ssid = webServer.arg("ssid");
-    String pass = webServer.arg("pass");
-    bool failed = false;
-    if (ssid.length() <= 1 || ssid.length() > 32)
-      failed = true;
-    if (pass.length() > 32)
-      failed = true;
-
-    //If failure, report it
-    if (failed) webServer.send(200, "text/html", 
-          "<!DOCTYPE html>\n<html>"
-          "<head>"
-              "<style>"
-                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
-                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
-                "body {background-color: #555555;}"
-                "input[type=text] {border: .1em solid #000000;}"
-                "input[type=password] {border: .1em solid #000000;}"
-                "p, label, input {font-size: 20px !important;}"
-                "h1 {font-size: 48px;}"
-                "h2 {font-size: 32px;}"
-              "</style>"
-              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
-          "</head>"
-          "<body>"
-              "<div class=\"container\">"
-                  "<h1>Squirrel</h1><h2>Something is wrong...</h2>"
-                  "<p>Your network name and password may not be more than 32 characters. "
-                  "Your network name may not be empty. These are the same credentials you use "
-                  "to connect your phone or personal computer to your network.</p><br/>"
-                  "<a href=\"/\">Try Again</a>"
-              "</div>"
-          "</body></html>");
-      
-    if (!failed) webServer.send(200, "text/html", 
-          "<!DOCTYPE html>\n<html>"
-          "<head>"
-              "<style>"
-                "div.container {max-width: 400px; margin-left: auto; margin-right: auto;"
-                "    background-color: #FFFFFF; padding: 24px; border-radius: 16px; }"
-                "body {background-color: #555555;}"
-                "input[type=text] {border: .1em solid #000000;}"
-                "input[type=password] {border: .1em solid #000000;}"
-                "p, label, input {font-size: 20px !important;}"
-                "h1 {font-size: 48px;}"
-                "h2 {font-size: 32px;}"
-              "</style>"
-              "<meta name=\"viewport\" content=\"width=500, target-densitydpi=device-dpi\">"
-          "</head>"
-          "<body>"
-              "<div class=\"container\">"
-                  "<h1>Squirrel</h1><h2>Thank you</h2>"
-                  "<p>Your Squirrel is restarting and will try to connect "
-                  "to your network. If the bulb does not connect to your controller, try "
-                  "these connection steps again, as this may be a sign that you have typed "
-                  "your network settings incorrectly. If your network is an AC "
-                  "(5GHz band) network, you must enable the B, G, or N wireless network "
-                  "to connect this device.</p>"
-              "</div>"
-          "</body></html>");
-
-    //Update network settings, exit pair mode
-    if (!failed) {
-      persistence.setSsid((char*)ssid.c_str());
-      persistence.setPass((char*)pass.c_str());
-      persistence.dumpIfDirty();
-      ESP.restart();
-    }
-  }
-}
-
 //--------------------------------------
-//  HELPER LOGIC
+//  SHARED MAIN ROUTINES
 //--------------------------------------
 
-/**
- * Returns the remainder of a division between numerator and denominator. 
- */
-float easyFMod(float numerator, float denominator) {
-  while (numerator < 0)
-    numerator += denominator;
-  while (numerator >= denominator)
-    numerator -= denominator;
+void setup() {
+  WiFi.persistent(false);
+  Persistence::init();
+  persistence = Persistence::load();
 
-  return numerator;
+  //Increment the cycle count and dump to flash
+  uint8_t cycles = persistence.incrementAndGetCycles();
+  if (cycles >= PAIR_CYCLE_COUNT) {
+    bootMode = BOOT_PAIR;
+    persistence.resetCycles();
+  }
+  persistence.dumpIfDirty();
+  
+  //Initial light data (remove, use persistence in a controller)
+  colors[0] = 0;
+  colors[1] = 0;
+  colors[2] = 0;
+  colors[3] = 255;
+  colors[4] = 255;
+
+  Serial.begin(9600);
+  delay(250);
+
+  switch (bootMode) {
+    case BOOT_NORMAL: setupNormal(); break;
+    case BOOT_PAIR: setupPair(); break;
+  }
 }
 
-/**
- * Locks the value of a float between two bounds.
- */
-float clamp(float value, float lower, float upper) {
-
-  if (value < lower)
-    value = lower;
-  if (value > upper)
-    value = upper;
-  return value;
-}
-
-/**
- * Note:
- * The hsvToRgb functions was copied from "https://github.com/ratkins/RGBConverter/"
- * with a free to use license.
- *
- * Converts an HSV color value to RGB. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
- * Assumes h, s, and v are contained in the set [0, 1] and
- * returns r, g, and b in the set [0, 255].
- *
- * @param   Number  h       The hue
- * @param   Number  s       The saturation
- * @param   Number  v       The value
- * @return  Array           The RGB representation
- */
-void hsvToRgb(float _h, float _s, float _v, uint8_t& _r, uint8_t& _g, uint8_t& _b) {
-    float h = easyFMod(_h / 360.0f, 1.0f);
-    float s = clamp(_s / 100.0f, 0.0f, 1.0f);
-    float v = clamp(_v / 100.0f, 0.0f, 1.0f);
-    
-    float r, g, b;
-
-    int i = int(h * 6);
-    float f = h * 6 - i;
-    float p = v * (1 - s);
-    float q = v * (1 - f * s);
-    float t = v * (1 - (1 - f) * s);
-
-    switch(i % 6){
-        case 0: r = v, g = t, b = p; break;
-        case 1: r = q, g = v, b = p; break;
-        case 2: r = p, g = v, b = t; break;
-        case 3: r = p, g = q, b = v; break;
-        case 4: r = t, g = p, b = v; break;
-        case 5: r = v, g = p, b = q; break;
-    }
-
-    _r = r * 255;
-    _g = g * 255;
-    _b = b * 255;
+void loop() {
+  switch (bootMode) {
+    case BOOT_NORMAL: loopNormal(); break;
+    case BOOT_PAIR: loopPair(); break;
+  }
 }
 
