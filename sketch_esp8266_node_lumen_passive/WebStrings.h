@@ -36,8 +36,8 @@ const char* WEB_FOOTER =
 const char* WEB_BODY_HOME = 
   "<h1>Squirrel</h1><h2>Wi-Fi Lighting Control System</h2>"
   "<p>Welcome to your Squirrel light bulb! The bulb you are connected to "
-  "is in setup mode, and is cycling through various colors. If you cannot "
-  "see it changing colors, it may "
+  "is in setup mode, and is cycling through various temperatures or "
+  "colors. If you cannot see this, your bulb may "
   "have been calibrated incorrectly and should be factory reset. </p>"
   "<p>If you want to begin using your bulb, you should start "
   "by connecting it to your wireless network.</p>"

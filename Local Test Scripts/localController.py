@@ -15,7 +15,7 @@ import json
 import datetime
 
 UDP_IP = "0.0.0.0"
-UDP_PORT = 23
+UDP_PORT = 65500
 
 def clientListenerMain(clientList, lock):
     """
@@ -28,7 +28,7 @@ def clientListenerMain(clientList, lock):
     sys.stdout.flush()
 
     while True:
-        (rawData, addr) = sock.recvfrom(128) # buffer size is 128 bytes
+        (rawData, addr) = sock.recvfrom(512) # buffer size is 128 bytes
         try:
             data = json.loads(rawData)
         except:

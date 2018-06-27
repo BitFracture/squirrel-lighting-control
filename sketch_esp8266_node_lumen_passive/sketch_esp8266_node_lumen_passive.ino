@@ -6,10 +6,9 @@
  * Author:   Erik W. Greif
  * Date:     2018-06-19
  * 
- * ROM sizes:
- *   Thinker AI Light: 1MB, 64KB SPIFFS
- * Ideal calibrations:
- *   Thinker AI Light: 0 20 120 150 240 325
+ * Hardware:
+ *   AIThinker AILight: ESP8266EX + 1MB(64K SPIFFS) @80MHz
+ *   Sonoff B1: ESP8285 @80MHz
  */
 
 //ESP8266 libraries
@@ -49,6 +48,7 @@ const IPAddress PAIRING_IP(1, 1, 1, 1);
 const uint8_t   PAIR_CYCLE_COUNT = 5;
 const int       PACKET_DATA_MAX_SIZE = 64;
 const uint16_t  DNS_PORT = 53;
+const uint16_t  DATA_PORT = 65500;
 const uint16_t  HTTP_SERVER_PORT = 80;
 const uint16_t  PAIRING_RESET_TIMEOUT = 4000;
 const uint16_t  CHECK_ADDRESS_TIMEOUT = 2000;
@@ -62,7 +62,8 @@ const char*     FIRMWARE_NAME = "squirrel";
 //--------------------------------------
 
 const char* INFO_PACKET_TEMPLATE = 
-    "{\"firmware\":\"%s\",\"action\":\"%s\",\"version\":%d,\"name\":\"%s\"}";
+    "{\"hardware\":\"%s\",\"firmware\":\"%s\",\"action\":\"%s\","
+    "\"version\":%d,\"name\":\"%s\",\"zone\":\"%s\"}";
 
 //Defines what set of logic to use
 enum BootMode {
@@ -76,12 +77,14 @@ const int LED_DATA_PIN = 12;
 const int LED_CLCK_PIN = 14;
 const uint8_t warmColor[] = {  0,   0,  0,    0,   255};
 my9231 ledDriver = my9231(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
+const char* HARDWARE_MODEL = "SONOFF_B1";
 
 #elif THINKER_AILIGHT
 const int LED_DATA_PIN = 13;
 const int LED_CLCK_PIN = 15;
 const uint8_t warmColor[] = {255, 128,  0,   64,   0};
 my9291 ledDriver = my9291(LED_DATA_PIN, LED_CLCK_PIN, MY9291_COMMAND_DEFAULT);
+const char* HARDWARE_MODEL = "AITHINKER_AILIGHT";
 #endif
 const uint8_t coolColor[] = {  0,   0,  0,  255,   0};
 
@@ -169,9 +172,10 @@ void loopNormal() {
   if (millis() - lastComTime > POLL_CONNECTION_TIMEOUT) {
     
     //UDP Broadcast ourself!
-    broadcast.beginPacket(broadcastAddress, persistence.getPort());
-    broadcast.printf(INFO_PACKET_TEMPLATE, FIRMWARE_NAME, "discover", 
-        FIRMWARE_VERSION, persistence.getName());
+    broadcast.beginPacket(broadcastAddress, DATA_PORT);
+    broadcast.printf(INFO_PACKET_TEMPLATE, HARDWARE_MODEL, FIRMWARE_NAME, 
+        "discover", FIRMWARE_VERSION, persistence.getName(), 
+        persistence.getZone());
     broadcast.endPacket();
 
     lastComTime = millis();
@@ -179,9 +183,10 @@ void loopNormal() {
   }
   //Keep alive packets
   if (millis() - lastKeepAliveTime > KEEP_ALIVE_PERIOD) {
-    broadcast.beginPacket(broadcastAddress, persistence.getPort());
-    broadcast.printf(INFO_PACKET_TEMPLATE, FIRMWARE_NAME, "keep-alive", 
-        FIRMWARE_VERSION, persistence.getName());
+    broadcast.beginPacket(broadcastAddress, DATA_PORT);
+    broadcast.printf(INFO_PACKET_TEMPLATE, HARDWARE_MODEL, FIRMWARE_NAME, 
+        "keep-alive", FIRMWARE_VERSION, persistence.getName(), 
+        persistence.getZone());
     broadcast.endPacket();
     
     lastKeepAliveTime = millis();
@@ -214,7 +219,7 @@ void handleReconnect() {
     Serial.print("Connected\n");
 
     //Open udp port for lumen data
-    clientData.begin(persistence.getPort());
+    clientData.begin(DATA_PORT);
     
     reconnect = false;
   }
@@ -496,8 +501,9 @@ void setupPair() {
   delay(250);
   
   WiFi.softAPConfig(PAIRING_IP, PAIRING_IP, IPAddress(255, 255, 255, 0));
-  char* ssid = "Squirrel-0000";
-  memcpy(ssid + 9, persistence.getTransientId(), 4);
+  char* ssid = "Squirrel-000000";
+  const char* id = persistence.getTransientId();
+  memcpy(ssid + 9, id, strlen(id));
   if (!WiFi.softAP(ssid)) {
     Serial.printf("Access point \"%s\" could not initialize\n", ssid);
     ESP.restart();

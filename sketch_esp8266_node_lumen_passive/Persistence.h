@@ -12,32 +12,47 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 
-const static float DEFAULT_HUES[] = {0.0f, 60.0f, 120.0f, 180.0f, 240.0f, 300.0f};
-  
+//Default static arrays
+static const char*   DEFAULT_SSID    = "network-ssid\0";
+static const char*   DEFAULT_PASS    = "network-pass\0";
+static const char*   DEFAULT_ZONE    = "\0";
+static const char*   HEADER          = "BFSQ";
+static const float   DEFAULT_HUES[]  = {0.0f, 60.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+static const uint8_t DEFAULT_WARM[]  = {0, 0, 0, 0, 255, 0};
+static const uint8_t DEFAULT_COOL[]  = {0, 0, 0, 255, 0, 0};
+static const uint8_t DEFAULT_COLOR[] = {0, 0, 0, 255, 255, 0};
+
 class Persistence {
+public:
+  static const uint16_t PERSISTENCE_VERSION = 1;
+  static const int      HEADER_LENGTH = 4;
+  
 private:
+  struct PackedDataHeader {
+    char header[4];
+    uint16_t version;
+  };
   struct PackedData {
-    uint8_t ver;
-    uint16_t port;
+    char header[4];
+    uint16_t version;
     uint8_t cycles;
     char ssid[33];
     char pass[33];
     char name[33];
+    char zone[33];
     uint8_t defaultColor[6];
     float hues[6];
-    uint8_t pureWhite[6];
+    uint8_t pureCool[6];
     uint8_t pureWarm[6];
   };
+  
   PackedData packedData;
   bool dirty;
-  const uint16_t DEFAULT_PORT = 23;
-  const uint8_t PERSISTENCE_VERSION = 1;
-  const char* DEFAULT_SSID = "network-ssid\0";
-  const char* DEFAULT_PASS = "network-pass\0";
-  char* id = "0000";
+  char* id = "000000";
 
   /**
-   * Uses entropy of the MAC address and current micros to generate a pseudo random seed
+   * Uses entropy of the MAC address and current micros to generate a 
+   * pseudo-random seed
    */
   int generateSeed() {
     uint8_t mac[6];
@@ -57,48 +72,49 @@ private:
   }
   
   /**
-   * Performs a series of validations and loads defaults if anything is out of place.
-   * Does NOT save the new defaults. The controlling application must call dump to 
-   * clear the dirty bit.
+   * Performs a series of validations and enforcements. Does NOT save changes 
+   * to persistence.The controlling application must call dump to  clear the 
+   * dirty bit.
    */
-  Persistence(PackedData packed) : packedData(packed), dirty(false) {
+  Persistence(PackedData packed, bool isDirty) : packedData(packed), dirty(isDirty) {
     //Basic requirements (forced delimiters)
     packedData.ssid[32] = 0;
     packedData.pass[32] = 0;
     packedData.name[32] = 0;
+    packedData.zone[32] = 0;
     
     randomSeed(generateSeed());
 
-    //Check validity, load defaults if not valid
-    if (!isAsciiString(&packedData.ssid[0]) || strlen(&packedData.ssid[0]) <= 0) {
-      dirty = true;
-      memset(&packedData.ssid[0], 0, 33);
-      memcpy(&packedData.ssid[0], DEFAULT_SSID, strlen(DEFAULT_SSID));
-    }
-    if (!isAsciiString(&packedData.pass[0])) {
-      dirty = true;
-      memset(&packedData.pass[0], 0, 33);
-      memcpy(&packedData.pass[0], DEFAULT_PASS, strlen(DEFAULT_PASS));
-    }
-    if (!isAsciiString(&packedData.name[0]) || strlen(&packedData.name[0]) <= 0) {
-      dirty = true;
-      memset(&packedData.name[0], 0, 33);
-      for (int i = 0; i < 4; i++)
-        packedData.name[i] = 'a' + random(0, 26);
-    }
-    if (packedData.ver != PERSISTENCE_VERSION) {
-      dirty = true;
-      packedData.ver = PERSISTENCE_VERSION;
-    }
-    if (packedData.port <= 0) {
-      packedData.port = DEFAULT_PORT;
-      dirty = true;
-    }
-
     //Unique ID for this session
-    for (int i = 0; i < 4; i++)
-      id[i] = 'A' + random(0, 26);
+    for (int i = 0; i < 6; i++)
+      id[i] = '0' + random(0, 10);
+
+    if (packedData.version != PERSISTENCE_VERSION)
+      loadDefaults();
   }
+  
+  template<typename T>
+  static T persistenceToStruct() {
+    int serialSize = sizeof(T);
+    T packed;
+    
+    for (int i = 0; i < serialSize; i++)
+      *(((byte*)(&packed)) + i) = EEPROM.read(i);
+
+    return packed;
+  }
+
+  void writeStringAttribute(char* fromStr, char* toStr, int maxLength) {
+    int len = strlen(fromStr);
+    if (len > maxLength) len = maxLength;
+    
+    if (strlen(toStr) != len || memcmp(toStr, fromStr, len) != 0) {
+      memcpy(toStr, fromStr, len);
+      toStr[len] = 0;
+      dirty = true;
+    }
+  }
+
 public:
   Persistence() : packedData(PackedData()), dirty(false) {}
   Persistence operator=(Persistence toCopy) {
@@ -110,13 +126,26 @@ public:
    * Constructs a Persistence object from the data stored in EEPROM or Flash.
    */
   static Persistence load() {
-    int serialSize = sizeof(PackedData);
-    PackedData packed;
-    
-    for (int i = 0; i < serialSize; i++)
-      *(((byte*)(&packed)) + i) = EEPROM.read(i);
+    PackedDataHeader packedHead = persistenceToStruct<PackedDataHeader>();
+    uint16_t version = packedHead.version;
 
-    return Persistence(packed);
+    //Make sure data format header matches exactly
+    for (int i = 0; i < HEADER_LENGTH; i++)
+      if (packedHead.header[i] != (char)HEADER[i]) version = 0;
+
+    PackedData packed;
+    bool isDirty = true;
+    switch (version) {
+      case 1: 
+        packed = persistenceToStruct<PackedData>();
+        isDirty = false;
+        break;
+      default:
+        //This is an invalid version and will trigger defaults to load
+        packed.version = 0;
+        break;
+    }
+    return Persistence(packed, isDirty);
   }
   static void init() {
     EEPROM.begin(512);
@@ -142,16 +171,22 @@ public:
   }
 
   void loadDefaults() {
-    packedData.ver = PERSISTENCE_VERSION;
-    packedData.port = DEFAULT_PORT;
+    packedData.version = PERSISTENCE_VERSION;
+    for (int i = 0; i < HEADER_LENGTH; i++)
+      packedData.header[i] = (char)HEADER[i];
     packedData.cycles = 0;
     setSsid((char*)DEFAULT_SSID);
     setPass((char*)DEFAULT_PASS);
+    setZone((char*)DEFAULT_ZONE);
     memset(&packedData.name[0], 0, 33);
-    for (int i = 0; i < 4; i++)
-      packedData.name[i] = 'a' + random(0, 26);
     for (int i = 0; i < 6; i++)
-      packedData.hues[i] = DEFAULT_HUES[i];
+      packedData.name[i] = 'a' + random(0, 26);
+    for (int i = 0; i < 6; i++) {
+      packedData.defaultColor[i] = DEFAULT_COLOR[i];
+      packedData.pureCool[i]     = DEFAULT_COOL[i];
+      packedData.pureWarm[i]     = DEFAULT_WARM[i];
+      packedData.hues[i]         = DEFAULT_HUES[i];
+    }
     dirty = true;
   }
   
@@ -167,8 +202,8 @@ public:
     return (const char*)&packedData.name[0];
   }
 
-  uint16_t getPort() {
-    return packedData.port;
+  const char* getZone() {
+    return (const char*)&packedData.zone[0];
   }
 
   const char* getTransientId() {
@@ -200,42 +235,19 @@ public:
   }
   
   void setSsid(char* newSsid) {
-    int len = strlen(newSsid);
-    if (len > 32) len = 32;
-    if (memcmp(&packedData.ssid[0], newSsid, len) != 0) {
-      memcpy(&packedData.ssid[0], newSsid, len);
-      packedData.ssid[len] = 0;
-      dirty = true;
-    }
+    writeStringAttribute(newSsid, &packedData.ssid[0], 32);
   }
 
   void setPass(char* newPass) {
-    int len = strlen(newPass);
-    if (len > 32) len = 32;
-    if (memcmp(&packedData.pass[0], newPass, len) != 0) {
-      memcpy(&packedData.pass[0], newPass, len);
-      packedData.pass[len] = 0;
-      dirty = true;
-    }
+    writeStringAttribute(newPass, &packedData.pass[0], 32);
   }
 
   void setName(char* newName) {
-    int len = strlen(newName);
-    if (len > 32) len = 32;
-    if (memcmp(&packedData.name[0], newName, len) != 0) {
-      memcpy(&packedData.name[0], newName, len);
-      packedData.name[len] = 0;
-      dirty = true;
-    }
+    writeStringAttribute(newName, &packedData.name[0], 32);
   }
 
-  void setPort(uint16_t newPort) {
-    if (newPort <= 0)
-      newPort = DEFAULT_PORT;
-    if (newPort != packedData.port) {
-      packedData.port = newPort;
-      dirty = true;
-    }
+  void setZone(char* newZone) {
+    writeStringAttribute(newZone, &packedData.zone[0], 32);
   }
 };
 
