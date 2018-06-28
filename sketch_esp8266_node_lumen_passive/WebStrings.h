@@ -48,6 +48,9 @@ const char* WEB_BODY_HOME =
   "<form method=\"get\" action=\"/reset\">"
     "<input type=\"submit\" value=\"Factory reset\"></input>"
   "</form><br/>"
+  "<form method=\"get\" action=\"/firmware\">"
+    "<input type=\"submit\" value=\"Firmware upgrade\"></input>"
+  "</form><br/>"
   "<form method=\"get\" action=\"/exit\">"
     "<input type=\"submit\" value=\"Exit setup\"></input>"
   "</form>";
@@ -70,6 +73,54 @@ const char* WEB_BODY_RESET_COMPLETE =
   "<p>Your Squirrel is restarting with factory settings. "
   "If you wish to use this bulb again, enter setup mode again and "
   "connect the bulb to your network.</p>";
+
+const char* WEB_BODY_FIRMWARE_CHECK = 
+  "<h1>Squirrel</h1><h2>Firmware Upgrade</h2>"
+  "<p>To check for the most recent firmware version, select \"Check "
+  "now.\" You will be given further instructions if an upgrade is "
+  "available.</p>"
+  "<form method=\"post\">"
+    "<input type=\"submit\" value=\"Check now\" />"
+  "</form><br/>"
+  "<form method=\"get\" action=\"/home\">"
+    "<input type=\"submit\" value=\"Back\" />"
+  "</form>";
+
+const char* WEB_BODY_FIRMWARE_CHECK_RESULTS_0 = 
+  "<h1>Squirrel</h1><h2>Firmware Upgrade</h2>"
+  "<p><b>Current firmware: </b>";
+const char* WEB_BODY_FIRMWARE_CHECK_RESULTS_1 = 
+  "</p><p><b>Available firmware: </b>";
+const char* WEB_BODY_FIRMWARE_CHECK_RESULTS_2_READY = 
+  "</p><p>If you choose to upgrade: <ul>"
+    "<li>Avoid elevated risk of a power outage (ex: a heavy storm)</li>"
+    "<li>Ensure that your wireless internet connection is stable</li>"
+    "<li>Do not turn off or unscrew the bulb</li>"
+    "<li>Do not try to use the bulb while it updates</li>"
+    "<li>Nooooo touchy. No touchy!</li></ul>"
+  "The bulb will automatically reboot and resume normal operation when the "
+  "upgrade has completed. In the unlikely event that an update fails during "
+  "the write operation, your bulb may stop working. If you are unable to boot "
+  "the bulb into setup mode, replace the bulb or connect a UART adapter "
+  "to the onboard computer. Firmware may be flashed manually via the UART. "
+  "</p><p>Have we scared you yet? By choosing to \"Upgrade now\" "
+  "you accept that if this process fails, your bulb may cease to function.</p>"
+  "<form action=\"/upgrade\" method=\"post\">"
+    "<input type=\"submit\" value=\"Upgrade now\" />"
+  "</form><br/>"
+  "<form method=\"get\" action=\"/home\">"
+    "<input type=\"submit\" value=\"Back\" />"
+  "</form>";
+const char* WEB_BODY_FIRMWARE_CHECK_RESULTS_2_GOOD = 
+  "</p><p>Your device is up to date.</p>"
+  "<form method=\"get\" action=\"/home\">"
+    "<input type=\"submit\" value=\"Back\" />"
+  "</form>";
+const char* WEB_BODY_FIRMWARE_CHECK_RESULTS_2_FAIL = 
+  "</p><p>An error occurred while checking for new firmware.</p>"
+  "<form method=\"get\" action=\"/home\">"
+    "<input type=\"submit\" value=\"Back\" />"
+  "</form>";
 
 const char* WEB_BODY_CONNECT = 
   "<h1>Squirrel</h1><h2>Connect To Your Network</h2>"

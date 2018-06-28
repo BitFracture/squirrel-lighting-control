@@ -202,26 +202,38 @@ void loopNormal() {
  * not been established.
  */
 void handleReconnect() {
+  static int state = 0;
+  static long mil = 0;
   
-  while (reconnect) {
-
-    //Close the UDP data socket
-    clientData.stop();
-    
-    //Wait for wifi for 5 seconds
-    Serial.print("Wait\n");
-    for (int i = 10; WiFi.status() != WL_CONNECTED && i > 0; i--) {
-      delay(500);
+  if (reconnect) {
+    if (state == 0) {
+      //Close the UDP data socket
+      clientData.stop();
+      
+      //Wait for wifi for 5 seconds
+      Serial.print("Reconnecting\n");
+      state = 1;
     }
-    if (WiFi.status() != WL_CONNECTED) {
-      break;
+  
+    //Reconnect wait loop check once per millisecond
+    if (mil != millis()) {
+      mil = millis();
+      
+      if (state > 0 && state < 5000) {
+        if (WiFi.status() != WL_CONNECTED) state++;
+        else {
+          state = 0;
+          reconnect = false;
+          //Open udp port for lumen data
+          clientData.begin(DATA_PORT);
+          Serial.print("Connected\n");
+        }
+      } else{
+        state = 0;
+      }
     }
-    Serial.print("Connected\n");
-
-    //Open udp port for lumen data
-    clientData.begin(DATA_PORT);
-    
-    reconnect = false;
+  } else {
+    state = 0;
   }
 }
 
@@ -422,6 +434,74 @@ void onResetRequest() {
   }
 }
 
+void onUpgradeCheckRequest() {
+  static const char* versionUrl = "http://bitfracture.com/updates/squirrel_firmware.version";
+  
+  Serial.println("Checking for the latest firmware");
+  Serial.printf("Firmware version URL: %s\n", versionUrl);
+
+  HTTPClient httpClient;
+  httpClient.begin(versionUrl);
+  int httpCode = httpClient.GET();
+
+  int newFirmwareVersion = -1;
+  if (httpCode == HTTP_CODE_OK) {
+    String responseBody = httpClient.getString();
+    newFirmwareVersion = responseBody.toInt();
+
+    Serial.printf("Current firmware version: %d\n", FIRMWARE_VERSION);
+    Serial.printf("Available firmware version: %d\n", newFirmwareVersion);
+
+    if (newFirmwareVersion > FIRMWARE_VERSION) {
+      /*String fwImageURL = fwURL;
+      fwImageURL.concat( ".bin" );
+      t_httpUpdate_return ret = ESPhttpUpdate.update( fwImageURL );
+
+      switch(ret) {
+        case HTTP_UPDATE_FAILED:
+          Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+          break;
+
+        case HTTP_UPDATE_NO_UPDATES:
+          Serial.println("HTTP_UPDATE_NO_UPDATES");
+          break;
+      }*/
+    }
+  }
+  else if (httpCode < 0)
+    Serial.println("Could not reach firmware server");
+  else
+    Serial.printf("Firmware version unavailable, code %d\n", httpCode);
+  httpClient.end();
+
+  //Version strings to send to the user
+  char verString[10];
+  char newVerString[10];
+  sprintf(&verString[0], "%d", FIRMWARE_VERSION);
+  if (newFirmwareVersion > 1)
+    sprintf(&newVerString[0], "%d", newFirmwareVersion);
+  else
+    sprintf(&newVerString[0], "ERROR");
+
+  //Handle response concatenation and variations
+  static const void* webBuffer[8];
+  webBuffer[0] = WEB_HEADER;
+  webBuffer[1] = WEB_BODY_FIRMWARE_CHECK_RESULTS_0;
+  webBuffer[2] = &verString[0];
+  webBuffer[3] = WEB_BODY_FIRMWARE_CHECK_RESULTS_1;
+  webBuffer[4] = &newVerString[0];
+  if (newFirmwareVersion < 0)
+    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_FAIL;
+  else if (newFirmwareVersion <= FIRMWARE_VERSION)
+    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_GOOD;
+  else
+    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_READY;
+  webBuffer[6] = WEB_FOOTER;
+  webBuffer[7] = NULL;
+  MultiStringStream responseFile(webBuffer);
+  webServer.streamFile<MultiStringStream>(responseFile, "text/html");
+}
+
 void onConnectRequest() {
   if (webServer.method() == HTTP_GET)
     sendStandardWebPageWith200(WEB_BODY_CONNECT);
@@ -483,8 +563,13 @@ void onWebRequest() {
   } else if (uri.equals("/exit")) {
     Serial.println("Web request received");
     onExitRequest();
+  } else if (uri.equals("/firmware")) {
+    Serial.println("Web request received");
+    onUpgradeCheckRequest();
+  } else if (uri.equals("/upgrade")) {
+    Serial.println("Web request received to do nothing");
   } else {
-    webServer.sendHeader("Location", "http://bit.bulb/home");
+    webServer.sendHeader("Location", "http://squirrel/home");
     webServer.send(302, "text/html", "");
   }
 }
@@ -515,6 +600,9 @@ void setupPair() {
   webServer.begin();
   
   Serial.print("WiFi is ready to accept connections\n");
+
+  WiFi.mode(WIFI_STA_AP);
+  WiFi.begin(persistence.getSsid(), persistence.getPass());
 }
 
 /**
@@ -523,6 +611,8 @@ void setupPair() {
 void loopPair() {
   static float hue = 0;
   static uint32_t colorCycleTime = 0;
+
+  handleReconnect();
   
   if (millis() - colorCycleTime > 33) {
     dnsServer.processNextRequest();
