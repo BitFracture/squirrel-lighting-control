@@ -34,7 +34,7 @@ def clientListenerMain(clientList, lock):
         except:
             data = {}
 
-        if data.get("firmware", "") != "squirrel":
+        if data.get("firmware", "") != "SQUIRREL":
             continue;
 
         if data.get("action", "") == "discover":

@@ -24,15 +24,31 @@ static const uint8_t DEFAULT_COLOR[] = {0, 0, 0, 255, 255, 0};
 
 class Persistence {
 public:
-  static const uint16_t PERSISTENCE_VERSION = 1;
+  static const uint16_t PERSISTENCE_VERSION = 2;
   static const int      HEADER_LENGTH = 4;
   
 private:
+  //Data serialization structs. ORDER MATTERS.
+  //Do not move or remove the first two attributes!
   struct PackedDataHeader {
     char header[4];
     uint16_t version;
   };
-  struct PackedData {
+  struct PackedDataV2 {
+    char header[4];
+    uint16_t version;
+    uint8_t cycles;
+    char ssid[33];
+    char pass[33];
+    char name[33];
+    char zone[33];
+    char bootMode;
+    uint8_t defaultColor[6];
+    uint8_t pureCool[6];
+    uint8_t pureWarm[6];
+    float hues[6];
+  };
+  struct PackedDataV1 {
     char header[4];
     uint16_t version;
     uint8_t cycles;
@@ -45,6 +61,9 @@ private:
     uint8_t pureCool[6];
     uint8_t pureWarm[6];
   };
+  //Typedef the latest version of persistence data so we don't 
+  //have to constantly refactor things
+  typedef struct PackedDataV2 PackedData;
   
   PackedData packedData;
   bool dirty;
@@ -104,6 +123,31 @@ private:
     return packed;
   }
 
+  /**
+   * Migration method for persistence v1 to v2.
+   * 
+   * Features:
+   *  - Adds boot mode for OTA updating
+   */
+  static PackedDataV2 migrateV1V2(PackedDataV1 oldData) {
+    Serial.println("Migrating to persistence V2");
+    PackedDataV2 newData;
+    newData.version = 2;
+    newData.cycles = oldData.cycles;
+    memcpy(&newData.header[0], &oldData.header[0], 4);
+    memcpy(&newData.ssid[0], &oldData.ssid[0], 33);
+    memcpy(&newData.name[0], &oldData.name[0], 33);
+    memcpy(&newData.pass[0], &oldData.pass[0], 33);
+    memcpy(&newData.zone[0], &oldData.zone[0], 33);
+    memcpy(&newData.defaultColor[0], &oldData.defaultColor[0], 6);
+    memcpy(&newData.pureCool[0], &oldData.pureCool[0], 6);
+    memcpy(&newData.pureWarm[0], &oldData.pureWarm[0], 6);
+    memcpy(&newData.hues[0], &oldData.hues[0], sizeof(float) * 6);
+    
+    newData.bootMode = 0;
+    return newData;
+  }
+
   void writeStringAttribute(char* fromStr, char* toStr, int maxLength) {
     int len = strlen(fromStr);
     if (len > maxLength) len = maxLength;
@@ -136,8 +180,12 @@ public:
     PackedData packed;
     bool isDirty = true;
     switch (version) {
-      case 1: 
+      case 2: 
         packed = persistenceToStruct<PackedData>();
+        isDirty = false;
+        break;
+      case 1: 
+        packed = migrateV1V2(persistenceToStruct<PackedDataV1>());
         isDirty = false;
         break;
       default:
@@ -171,6 +219,8 @@ public:
   }
 
   void loadDefaults() {
+    Serial.println("Loading persistence defaults");
+    
     packedData.version = PERSISTENCE_VERSION;
     for (int i = 0; i < HEADER_LENGTH; i++)
       packedData.header[i] = (char)HEADER[i];
@@ -187,6 +237,7 @@ public:
       packedData.pureWarm[i]     = DEFAULT_WARM[i];
       packedData.hues[i]         = DEFAULT_HUES[i];
     }
+    packedData.bootMode = 0;
     dirty = true;
   }
   

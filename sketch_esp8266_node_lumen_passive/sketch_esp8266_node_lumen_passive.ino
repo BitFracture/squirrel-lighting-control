@@ -26,6 +26,7 @@
 #include <my9291.h>;
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266httpUpdate.h>
 
 //Custom libraries
 #include <CommandInterpreter.h>
@@ -55,7 +56,7 @@ const uint16_t  CHECK_ADDRESS_TIMEOUT = 2000;
 const uint16_t  POLL_CONNECTION_TIMEOUT = 5000;
 const uint16_t  KEEP_ALIVE_PERIOD = 60000;
 const uint16_t  FIRMWARE_VERSION = 2;
-const char*     FIRMWARE_NAME = "squirrel";
+const char*     FIRMWARE_NAME = "SQUIRREL";
 
 //--------------------------------------
 //  GLOBAL DEFINITIONS
@@ -68,7 +69,8 @@ const char* INFO_PACKET_TEMPLATE =
 //Defines what set of logic to use
 enum BootMode {
   BOOT_PAIR = 0,
-  BOOT_NORMAL = 1
+  BOOT_NORMAL = 1,
+  BOOT_FIRMWARE_UPGRADE = 2
 };
 
 //Per-platform definitions
@@ -128,6 +130,7 @@ void setupNormal() {
   serialCmd.assign("calibrate-hue", commandSetHueCalibration);
   serialCmd.assign("set-name", commandSetName);
   serialCmd.assign("pair", commandPair);
+  serialCmd.assign("upgrade", commandFirmwareUpgrade);
   dataCmd = CommandInterpreter(serialCmd);
 }
 
@@ -197,6 +200,135 @@ void loopNormal() {
   dataCmd.handleUdp(clientData);
 }
 
+void setOutputHsv(float hue, float sat, float val, boolean calibrated = true) {
+
+  if (calibrated)
+    hue = calibrateHue(hue);
+  hsvToRgb(hue, sat, val, colors[0], colors[1], colors[2]);
+  colors[3] = 0;
+  colors[4] = 0;
+  ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
+}
+
+/**
+ * Main routine for firmware upgrade process
+ */
+void loopFirmwareUpgrade() {
+  static int upgradeState = 0;
+  static int waitTimer = 0;
+  static int newFirmwareVersion = -1;
+  static const char* urlBase = "http://bitfracture.com/updates/squirrel/";
+
+  //Start the timer
+  if (upgradeState == 0) {
+    waitTimer = millis();
+    upgradeState = 1;
+  }
+
+  //Flash the warning light
+  else if (upgradeState == 1) {
+    float val = ((sin((float)millis() / 150.0f) * 37.5f) + 62.5f);
+    setOutputHsv(0.0f, 100.0f, val);
+    
+    if (millis() - waitTimer > 5000) {
+      setOutputHsv(60, 100, 100);
+      delay(2000);
+      upgradeState = 2;
+    }
+  }
+  
+  //Fetch the latest version number
+  else if (upgradeState == 2) {
+    Serial.println("Checking for the latest firmware");
+    
+    String versionUrl(urlBase);
+    versionUrl.concat(FIRMWARE_NAME);
+    versionUrl.concat("_");
+    versionUrl.concat(HARDWARE_MODEL);
+    versionUrl.concat(".version");
+    Serial.printf("Firmware version at: %s\n", versionUrl.c_str());
+  
+    HTTPClient httpClient;
+    httpClient.begin(versionUrl);
+    int httpCode = httpClient.GET();
+  
+    if (httpCode == HTTP_CODE_OK) {
+      String responseBody = httpClient.getString();
+      newFirmwareVersion = responseBody.toInt();
+  
+      Serial.printf("Current firmware version: %d\n", FIRMWARE_VERSION);
+      Serial.printf("Available firmware version: %d\n", newFirmwareVersion);
+  
+      if (newFirmwareVersion > FIRMWARE_VERSION)
+        upgradeState = 3;
+      else
+        upgradeState = 4;
+    }
+    else if (httpCode < 0) {
+      Serial.println("Could not reach firmware server");
+      upgradeState = 5;
+    } else {
+      Serial.printf("Firmware version unavailable, code %d\n", httpCode);
+      upgradeState = 5;
+    }
+    httpClient.end();
+  }
+
+  //Flash new firmware image!
+  else if (upgradeState == 3) {
+    Serial.println("Flashing the latest firmware...");
+    
+    char verString[10];
+    sprintf(&verString[0], "%d", newFirmwareVersion);
+    String flashBinUrl(urlBase);
+    flashBinUrl.concat(FIRMWARE_NAME);
+    flashBinUrl.concat("_");
+    flashBinUrl.concat(HARDWARE_MODEL);
+    flashBinUrl.concat("_");
+    flashBinUrl.concat((const char*)&verString[0]);
+    flashBinUrl.concat(".bin");
+    Serial.printf("Firmware binary at: %s\n", flashBinUrl.c_str());
+    
+    t_httpUpdate_return ret = ESPhttpUpdate.update(flashBinUrl);
+
+    switch(ret) {
+      case HTTP_UPDATE_FAILED:
+        Serial.printf("Update failed, error: (%d), %s", 
+            ESPhttpUpdate.getLastError(), 
+            ESPhttpUpdate.getLastErrorString().c_str());
+        upgradeState = 5;
+        break;
+      default:
+        Serial.println("Firmware updated successfully");
+        upgradeState = 4;
+        break;
+    }
+  }
+
+  //Show success and reboot
+  else if (upgradeState == 4) {
+    
+    setOutputHsv(120, 100, 100);
+    delay(2000);
+    upgradeState = -1;
+    ESP.restart();
+  }
+
+  //Show fail and reboot
+  else if (upgradeState == 5) {
+    
+    setOutputHsv(0, 100, 100);
+    delay(2000);
+    upgradeState = -1;
+    ESP.restart();
+  }
+
+  //Catch-all
+  else {
+    ESP.restart();
+  }
+}
+
 /**
  * Reconnection logic when a connection to the access point is lost or has
  * not been established.
@@ -262,6 +394,15 @@ void commandSetTemp(Stream& port, int argc, const char** argv) {
   }
 
   ledDriver.setColor((my9291_color_t){colors[0], colors[1], colors[2], colors[3], colors[4]});
+}
+
+/**
+ * Dips the main loop and switches to firmware upgrade "boot" mode
+ */
+void commandFirmwareUpgrade(Stream& port, int argc, const char** argv) {
+
+  lastComTime = millis();
+  bootMode = BOOT_FIRMWARE_UPGRADE;
 }
 
 /**
@@ -434,70 +575,19 @@ void onResetRequest() {
   }
 }
 
-void onUpgradeCheckRequest() {
-  static const char* versionUrl = "http://bitfracture.com/updates/squirrel_firmware.version";
-  
-  Serial.println("Checking for the latest firmware");
-  Serial.printf("Firmware version URL: %s\n", versionUrl);
-
-  HTTPClient httpClient;
-  httpClient.begin(versionUrl);
-  int httpCode = httpClient.GET();
-
-  int newFirmwareVersion = -1;
-  if (httpCode == HTTP_CODE_OK) {
-    String responseBody = httpClient.getString();
-    newFirmwareVersion = responseBody.toInt();
-
-    Serial.printf("Current firmware version: %d\n", FIRMWARE_VERSION);
-    Serial.printf("Available firmware version: %d\n", newFirmwareVersion);
-
-    if (newFirmwareVersion > FIRMWARE_VERSION) {
-      /*String fwImageURL = fwURL;
-      fwImageURL.concat( ".bin" );
-      t_httpUpdate_return ret = ESPhttpUpdate.update( fwImageURL );
-
-      switch(ret) {
-        case HTTP_UPDATE_FAILED:
-          Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-          break;
-
-        case HTTP_UPDATE_NO_UPDATES:
-          Serial.println("HTTP_UPDATE_NO_UPDATES");
-          break;
-      }*/
-    }
-  }
-  else if (httpCode < 0)
-    Serial.println("Could not reach firmware server");
-  else
-    Serial.printf("Firmware version unavailable, code %d\n", httpCode);
-  httpClient.end();
-
+void onFirmwareRequest() {
   //Version strings to send to the user
   char verString[10];
-  char newVerString[10];
   sprintf(&verString[0], "%d", FIRMWARE_VERSION);
-  if (newFirmwareVersion > 1)
-    sprintf(&newVerString[0], "%d", newFirmwareVersion);
-  else
-    sprintf(&newVerString[0], "ERROR");
-
+  
   //Handle response concatenation and variations
-  static const void* webBuffer[8];
+  static const void* webBuffer[6];
   webBuffer[0] = WEB_HEADER;
-  webBuffer[1] = WEB_BODY_FIRMWARE_CHECK_RESULTS_0;
+  webBuffer[1] = WEB_BODY_FIRMWARE_0;
   webBuffer[2] = &verString[0];
-  webBuffer[3] = WEB_BODY_FIRMWARE_CHECK_RESULTS_1;
-  webBuffer[4] = &newVerString[0];
-  if (newFirmwareVersion < 0)
-    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_FAIL;
-  else if (newFirmwareVersion <= FIRMWARE_VERSION)
-    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_GOOD;
-  else
-    webBuffer[5] = WEB_BODY_FIRMWARE_CHECK_RESULTS_2_READY;
-  webBuffer[6] = WEB_FOOTER;
-  webBuffer[7] = NULL;
+  webBuffer[3] = WEB_BODY_FIRMWARE_1;
+  webBuffer[4] = WEB_FOOTER;
+  webBuffer[5] = NULL;
   MultiStringStream responseFile(webBuffer);
   webServer.streamFile<MultiStringStream>(responseFile, "text/html");
 }
@@ -552,22 +642,20 @@ void onExitRequest() {
 void onWebRequest() {
   String uri = webServer.uri();
   if (uri.equals("/home")) {
-    Serial.println("Web request received");
+    Serial.println("Home web request received");
     onHomeRequest();
   } else if (uri.equals("/connect")) {
-    Serial.println("Web request received");
+    Serial.println("Connect web request received");
     onConnectRequest();
   } else if (uri.equals("/reset")) {
-    Serial.println("Web request received");
+    Serial.println("Reset web request received");
     onResetRequest();
   } else if (uri.equals("/exit")) {
-    Serial.println("Web request received");
+    Serial.println("Exit web request received");
     onExitRequest();
   } else if (uri.equals("/firmware")) {
-    Serial.println("Web request received");
-    onUpgradeCheckRequest();
-  } else if (uri.equals("/upgrade")) {
-    Serial.println("Web request received to do nothing");
+    Serial.println("Firmware web request received");
+    onFirmwareRequest();
   } else {
     webServer.sendHeader("Location", "http://squirrel/home");
     webServer.send(302, "text/html", "");
@@ -601,8 +689,7 @@ void setupPair() {
   
   Serial.print("WiFi is ready to accept connections\n");
 
-  WiFi.mode(WIFI_STA_AP);
-  WiFi.begin(persistence.getSsid(), persistence.getPass());
+  //WiFi.begin(persistence.getSsid(), persistence.getPass());
 }
 
 /**
@@ -668,6 +755,7 @@ void loop() {
   switch (bootMode) {
     case BOOT_NORMAL: loopNormal(); break;
     case BOOT_PAIR: loopPair(); break;
+    case BOOT_FIRMWARE_UPGRADE: loopFirmwareUpgrade(); break;
   }
 }
 
