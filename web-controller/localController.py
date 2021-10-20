@@ -13,6 +13,7 @@ from asyncio import Lock
 from time import sleep
 import json
 import datetime
+from localWebServer import LocalWebServer
 
 UDP_IP = "0.0.0.0"
 UDP_PORT = 65500
@@ -95,6 +96,10 @@ def clientMulticastMain(command, clientList, lock):
                 sock.sendto(command["value"].encode('ascii'), (client.get("ip", ""), UDP_PORT))
         lock.release()
 
+def webServerMain(command, clientList, lock):
+    # Start the web server
+    LocalWebServer.start_server(command, clientList, lock)
+
 def clientMain(command, clientList, lock):
     """
     Main thread for sending data to registered clients
@@ -116,13 +121,17 @@ if __name__ == "__main__":
     lock = multiprocessing.Lock()
     clientList = manager.list()
     command = manager.dict()
-    command["value"] = "t 128\n"
+    command["value"] = "t 128"
 
     # Start listener and sender main
     listener = multiprocessing.Process(target = clientListenerMain, args=(clientList, lock))
     listener.start()
     sender = multiprocessing.Process(target = clientMulticastMain, args=(command, clientList, lock))
     sender.start()
+    web_server = multiprocessing.Process(target = webServerMain, args=(command, clientList, lock))
+    web_server.start()
+    
+    # Command interpreter stays in this thread
     clientMain(command, clientList, lock)
 
     # Once sender main terminates, kill the listener

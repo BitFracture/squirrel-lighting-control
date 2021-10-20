@@ -1,0 +1,40 @@
+<!DOCTYPE html/>
+<html>
+<head>
+    <script>
+        function validate(e) {
+            var text = e.target.value;
+            console.log("Executing command: " + text)
+            
+            const Http = new XMLHttpRequest();
+            const url='/command';
+            Http.open("POST", url);
+            let body = {
+                "command": text
+            };
+            Http.send(JSON.stringify(body));
+            Http.onreadystatechange = (e) => {
+                console.log("Response: " + Http.responseText)
+            }
+        }
+        
+        function init() {
+            var commander = document.getElementById("command-box");
+            commander.addEventListener("keydown", function (e) {
+                if (e.keyCode === 13) {  //checks whether the pressed key is "Enter"
+                    validate(e);
+                }
+            });
+        }
+    </script>
+</head>
+<body onload="init()">
+    <h1>Page title</h1>
+    <h2>Connected Clients</h2>
+    <ul>
+    {% for client in clientList %}<li>{{ client.get("name")|safe }} ... {{ client.get("ip")|safe }}</li>{% endfor %}
+    </ul>
+    
+    <input type=text id="command-box"/>
+</body>
+</html>

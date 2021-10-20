@@ -41,8 +41,8 @@
 //--------------------------------------
 
 //Uncomment the current hardware platform
-//#define SONOFF_B1 0
-#define THINKER_AILIGHT 1
+#define SONOFF_B1 0
+//#define THINKER_AILIGHT 1
 
 //Configurable constants
 const IPAddress PAIRING_IP(1, 1, 1, 1);
